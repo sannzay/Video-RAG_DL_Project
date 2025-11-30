@@ -1,10 +1,14 @@
 # Nixpacks configuration for Railway deployment
 
 [phases.setup]
-nixPkgs = ["python311", "python311Packages.pip", "ffmpeg", "postgresql"]
+nixPkgs = ["python311", "python311Packages.setuptools", "python311Packages.wheel", "ffmpeg", "postgresql"]
 
 [phases.install]
-cmds = ["cd backend && python3.11 -m pip install --upgrade pip", "cd backend && python3.11 -m pip install -e ."]
+cmds = [
+    "cd backend && python3.11 -m ensurepip --upgrade",
+    "cd backend && python3.11 -m pip install --upgrade pip setuptools wheel",
+    "cd backend && python3.11 -m pip install -e ."
+]
 
 [start]
 cmd = "cd backend && python3.11 api.py"
