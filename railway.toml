@@ -1,0 +1,15 @@
+# Railway deployment configuration for QuadRAG Backend
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "cd backend && pip install -e ."
+
+[deploy]
+startCommand = "cd backend && python api.py"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+# Environment variables are set in Railway dashboard
+

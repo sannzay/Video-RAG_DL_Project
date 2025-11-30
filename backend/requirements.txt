@@ -1,0 +1,34 @@
+# QuadRAG Backend Dependencies
+# Generated from pyproject.toml for Railway deployment
+
+# Core
+pixeltable>=0.4.1
+groq>=0.11.0
+openai>=1.91.0
+google-generativeai>=0.8.0
+
+# Web Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.11.7
+pydantic-settings>=2.10.0
+
+# Utilities
+python-dotenv>=1.1.0
+python-multipart>=0.0.12
+loguru>=0.7.3
+aiofiles>=24.1.0
+
+# Media Processing
+moviepy>=2.2.1
+pillow>=11.0.0
+
+# ML/Embeddings
+sentence-transformers>=4.1.0
+transformers>=4.52.4
+torch>=2.0.0
+numpy>=1.24.0
+
+# Async support
+nest-asyncio>=1.6.0
+

@@ -552,12 +552,22 @@ async def list_videos():
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
+    
+    # Ensure data directories exist
+    settings.get_video_dir().mkdir(parents=True, exist_ok=True)
+    settings.get_cache_dir().mkdir(parents=True, exist_ok=True)
+    
+    # Use PORT from environment (Railway) or fall back to API_PORT
+    port = int(os.environ.get("PORT", settings.API_PORT))
+    
+    logger.info(f"Starting QuadRAG API on {settings.API_HOST}:{port}")
 
     uvicorn.run(
         app,
         host=settings.API_HOST,
-        port=settings.API_PORT,
+        port=port,
         log_level="info",
     )
 

@@ -55,11 +55,21 @@ class Settings(BaseSettings):
     # === API Configuration ===
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
+    PORT: int = 8000  # Railway sets this automatically
+    
+    # === Database Configuration (for Railway PostgreSQL) ===
+    DATABASE_URL: str = ""  # Railway PostgreSQL URL (optional)
+    PIXELTABLE_HOME: str = ""  # Custom Pixeltable home directory
 
     # === Data Paths ===
     DATA_DIR: str = "../data"
     VIDEO_DIR: str = "../data/videos"
     CACHE_DIR: str = "../data/cache"
+    
+    def get_api_port(self) -> int:
+        """Get API port - uses Railway's PORT if set, otherwise API_PORT."""
+        import os
+        return int(os.environ.get("PORT", self.API_PORT))
 
     # === Prompt Templates ===
     DESCRIPTION_PROMPT: str = "Describe what is happening in this image in detail."

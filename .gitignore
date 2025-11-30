@@ -22,10 +22,9 @@ wheels/
 MANIFEST
 
 # Virtual environments
-.env
-.venv
-env/
+.venv/
 venv/
+env/
 ENV/
 env.bak/
 venv.bak/
@@ -53,14 +52,18 @@ logs/
 
 # Pixeltable
 *.pxt/
+.pixeltable/
 
-# API keys
+# API keys and environment files
 .env
 .env.local
+.env.*.local
+backend/.env
 
 # Temporary files
 tmp/
 temp/
 *.tmp
 
-
+# Frontend build artifacts
+frontend/.deps_installed
