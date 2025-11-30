@@ -553,22 +553,45 @@ async def list_videos():
 
 if __name__ == "__main__":
     import os
+    import sys
     import uvicorn
     
-    # Ensure data directories exist
-    settings.get_video_dir().mkdir(parents=True, exist_ok=True)
-    settings.get_cache_dir().mkdir(parents=True, exist_ok=True)
-    
-    # Use PORT from environment (Railway) or fall back to API_PORT
-    port = int(os.environ.get("PORT", settings.API_PORT))
-    
-    logger.info(f"Starting QuadRAG API on {settings.API_HOST}:{port}")
+    try:
+        # Ensure data directories exist
+        video_dir = settings.get_video_dir()
+        cache_dir = settings.get_cache_dir()
+        video_dir.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Data directories ready: {video_dir}, {cache_dir}")
+        
+        # Validate API keys are set
+        if not settings.GROQ_API_KEY or settings.GROQ_API_KEY.startswith("your_"):
+            logger.error("GROQ_API_KEY not set or invalid")
+            sys.exit(1)
+        if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("your_"):
+            logger.error("OPENAI_API_KEY not set or invalid")
+            sys.exit(1)
+        if not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY.startswith("your_"):
+            logger.error("GOOGLE_API_KEY not set or invalid")
+            sys.exit(1)
+        
+        # Use PORT from environment (Railway) or fall back to API_PORT
+        port = int(os.environ.get("PORT", settings.API_PORT))
+        
+        logger.info(f"Starting QuadRAG API on {settings.API_HOST}:{port}")
+        logger.info(f"Environment: PORT={port}, API_PORT={settings.API_PORT}")
 
-    uvicorn.run(
-        app,
-        host=settings.API_HOST,
-        port=port,
-        log_level="info",
-    )
+        uvicorn.run(
+            app,
+            host=settings.API_HOST,
+            port=port,
+            log_level="info",
+            access_log=True,
+        )
+    except Exception as e:
+        logger.error(f"Failed to start server: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        sys.exit(1)
 
 

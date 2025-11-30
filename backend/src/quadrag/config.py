@@ -70,18 +70,26 @@ class Settings(BaseSettings):
         """Get API port - uses Railway's PORT if set, otherwise API_PORT."""
         import os
         return int(os.environ.get("PORT", self.API_PORT))
-
-    # === Prompt Templates ===
-    DESCRIPTION_PROMPT: str = "Describe what is happening in this image in detail."
-    DOMAIN_PROMPT_TEMPLATE: str = "Based on the context '{domain_context}', describe what you observe in this image."
-
+    
     def get_video_dir(self) -> Path:
         """Get the video directory path."""
+        import os
+        # In Railway, use absolute path from /app
+        if os.environ.get("RAILWAY_ENVIRONMENT"):
+            return Path("/app/data/videos").resolve()
         return Path(self.VIDEO_DIR).resolve()
 
     def get_cache_dir(self) -> Path:
         """Get the cache directory path."""
+        import os
+        # In Railway, use absolute path from /app
+        if os.environ.get("RAILWAY_ENVIRONMENT"):
+            return Path("/app/data/cache").resolve()
         return Path(self.CACHE_DIR).resolve()
+
+    # === Prompt Templates ===
+    DESCRIPTION_PROMPT: str = "Describe what is happening in this image in detail."
+    DOMAIN_PROMPT_TEMPLATE: str = "Based on the context '{domain_context}', describe what you observe in this image."
 
 
 @lru_cache(maxsize=1)
