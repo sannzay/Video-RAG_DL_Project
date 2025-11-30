@@ -1,11 +1,12 @@
 # Railway deployment configuration for QuadRAG Backend
+# Nixpacks will use nixpacks.toml for build configuration
 
 [build]
 builder = "NIXPACKS"
-buildCommand = "cd backend && python3.11 -m pip install -e ."
+# buildCommand removed - using nixpacks.toml instead
 
 [deploy]
-startCommand = "cd backend && python3.11 api.py"
+# startCommand removed - using nixpacks.toml instead
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
