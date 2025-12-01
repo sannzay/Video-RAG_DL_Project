@@ -26,17 +26,17 @@ cmds = [
     "source /app/venv/bin/activate && cd backend && pip install -e . --no-deps",
     # Force reinstall numpy to ensure it's properly installed (fixes source directory issue)
     "source /app/venv/bin/activate && pip install --force-reinstall --no-deps 'numpy>=1.24.0,<2.0.0'",
-    # Find libstdc++ using multiple methods and save path
-    "echo '=== Finding libstdc++ ===' && LIBSTDCPP='' && if [ -f /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ]; then LIBSTDCPP=/usr/lib/x86_64-linux-gnu/libstdc++.so.6; elif [ -f /lib/x86_64-linux-gnu/libstdc++.so.6 ]; then LIBSTDCPP=/lib/x86_64-linux-gnu/libstdc++.so.6; else LIBSTDCPP=$(ldconfig -p 2>/dev/null | grep libstdc++ | awk '{print $4}' | head -1); fi && if [ -z \"$LIBSTDCPP\" ]; then LIBSTDCPP=$(find /usr /lib -name 'libstdc++.so.6' -type f 2>/dev/null | head -1); fi && if [ -n \"$LIBSTDCPP\" ] && [ -f \"$LIBSTDCPP\" ]; then LIBDIR=$(dirname \"$LIBSTDCPP\") && echo \"Found libstdc++ at: $LIBDIR\" && echo \"$LIBDIR\" > /app/libstdcpp_dir.txt; else echo 'ERROR: No libstdc++.so.6 found! Trying fallback...' && echo '/usr/lib/x86_64-linux-gnu' > /app/libstdcpp_dir.txt; fi",
+    # Find libstdc++ using the same method as ldconfig shows (/lib/x86_64-linux-gnu/libstdc++.so.6)
+    "echo '=== Finding libstdc++ ===' && LIBSTDCPP=$(ldconfig -p 2>/dev/null | grep libstdc++ | awk '{print $4}' | head -1) && if [ -z \"$LIBSTDCPP\" ]; then LIBSTDCPP=$(find /lib -name 'libstdc++.so.6' -type f 2>/dev/null | head -1); fi && if [ -n \"$LIBSTDCPP\" ] && [ -f \"$LIBSTDCPP\" ]; then LIBDIR=$(dirname \"$LIBSTDCPP\") && echo \"Found libstdc++ at: $LIBDIR (from $LIBSTDCPP)\" && echo \"$LIBDIR\" > /app/libstdcpp_dir.txt; else echo 'ERROR: No libstdc++.so.6 found!' && exit 1; fi",
     # Verify the saved path actually has the file
-    "LIBDIR=$(cat /app/libstdcpp_dir.txt) && if [ -f \"$LIBDIR/libstdc++.so.6\" ]; then echo \"Verified: $LIBDIR/libstdc++.so.6 exists\"; else echo \"WARNING: $LIBDIR/libstdc++.so.6 does NOT exist\"; fi",
+    "LIBDIR=$(cat /app/libstdcpp_dir.txt) && if [ -f \"$LIBDIR/libstdc++.so.6\" ]; then echo \"Verified: $LIBDIR/libstdc++.so.6 exists and is executable: $(ls -la \"$LIBDIR/libstdc++.so.6\")\"; else echo \"FATAL: $LIBDIR/libstdc++.so.6 does NOT exist\" && exit 1; fi",
     # Find torch installation directory (before trying to import torch)
     "source /app/venv/bin/activate && TORCH_DIR=$(python -c 'import importlib.util; spec = importlib.util.find_spec(\"torch\"); print(spec.submodule_search_locations[0] if spec else \"\")') && echo \"Torch dir: $TORCH_DIR\" && echo \"$TORCH_DIR\" > /app/torch_dir.txt && ls -la $TORCH_DIR/lib/ 2>/dev/null || echo 'No torch/lib directory'",
-    # Test torch import with detailed error - try multiple approaches
-    "source /app/venv/bin/activate && LIBDIR=$(cat /app/libstdcpp_dir.txt 2>/dev/null) && TORCH_LIB=$(cat /app/torch_dir.txt)/lib && export LD_LIBRARY_PATH=$LIBDIR:$TORCH_LIB:$LD_LIBRARY_PATH && echo \"Testing torch with LD_LIBRARY_PATH=$LD_LIBRARY_PATH\" && python -c 'import torch; print(f\"Torch {torch.__version__} OK\")' 2>&1 || echo 'Torch import failed'"
+    # Test torch import with the correct LD_LIBRARY_PATH (same as runtime)
+    "source /app/venv/bin/activate && LIBDIR=$(cat /app/libstdcpp_dir.txt 2>/dev/null) && TORCH_LIB=$(cat /app/torch_dir.txt 2>/dev/null)/lib && export LD_LIBRARY_PATH=$LIBDIR:$TORCH_LIB:$LD_LIBRARY_PATH && echo \"Final test with LD_LIBRARY_PATH=$LD_LIBRARY_PATH\" && python -c 'import torch; print(f\"Torch {torch.__version__} OK - build test passed\")' 2>&1 && echo 'BUILD SUCCESS: Torch import works!' || (echo 'BUILD FAILED: Torch import failed' && exit 1)"
 ]
 
 [start]
 # Set LD_LIBRARY_PATH with saved libstdc++ path and torch lib
-# Fallback to standard Ubuntu location if file not found
-cmd = "LIBDIR=$(cat /app/libstdcpp_dir.txt 2>/dev/null || echo '/usr/lib/x86_64-linux-gnu') && TORCH_DIR=$(cat /app/torch_dir.txt 2>/dev/null || echo '') && TORCH_LIB='' && [ -n \"$TORCH_DIR\" ] && [ -d \"$TORCH_DIR/lib\" ] && TORCH_LIB=\"$TORCH_DIR/lib\" && export LD_LIBRARY_PATH=$LIBDIR${TORCH_LIB:+:$TORCH_LIB}:$LD_LIBRARY_PATH && echo \"LD_LIBRARY_PATH=$LD_LIBRARY_PATH\" && [ -f \"$LIBDIR/libstdc++.so.6\" ] && echo \"libstdc++ found at $LIBDIR/libstdc++.so.6\" || echo \"WARNING: libstdc++ not found at $LIBDIR/libstdc++.so.6\" && source /app/venv/bin/activate && cd backend && python api.py"
+# Use the exact same logic as the successful test
+cmd = "LIBDIR=$(cat /app/libstdcpp_dir.txt 2>/dev/null || echo '/usr/lib/x86_64-linux-gnu') && TORCH_LIB=$(cat /app/torch_dir.txt 2>/dev/null)/lib && export LD_LIBRARY_PATH=$LIBDIR:$TORCH_LIB:$LD_LIBRARY_PATH && echo \"LD_LIBRARY_PATH=$LD_LIBRARY_PATH\" && echo \"libstdc++ file: $(ls -la $LIBDIR/libstdc++.so.6 2>/dev/null)\" && source /app/venv/bin/activate && cd backend && python api.py"
