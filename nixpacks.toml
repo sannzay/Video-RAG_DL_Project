@@ -44,5 +44,5 @@ cmds = [
 ]
 
 [start]
-# Simple startup command to test if container starts at all
-cmd = "echo 'Container started successfully'; echo \"PORT=${PORT:-8080}\"; echo \"PWD=$(pwd)\"; ls -la /app/ | head -10; echo 'Test completed'"
+# Use startup script for detailed debugging and proper error handling
+cmd = "./start.sh"
