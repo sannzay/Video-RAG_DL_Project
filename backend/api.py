@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import sys
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -9,30 +10,54 @@ from pathlib import Path
 from typing import Dict, Optional
 
 # ============================================================================
-# CRITICAL: Pre-import numpy BEFORE any heavy imports to avoid the error:
-# "you should not try to import numpy from its source directory"
-# This must happen before pixeltable, torch, transformers, etc. are imported.
+# CRITICAL: Fix Python path and import numpy BEFORE any heavy imports
+# This prevents the error: "you should not try to import numpy from its source directory"
 # ============================================================================
-# First, ensure we're in a safe working directory
+
+# Step 1: Clean up sys.path - remove current directory and any potentially conflicting paths
 _original_cwd = os.getcwd()
+_paths_to_remove = []
+for p in sys.path:
+    # Remove current directory, empty strings, and any path containing 'numpy' source
+    if p == '' or p == '.' or p == _original_cwd:
+        _paths_to_remove.append(p)
+    # Also check for paths that might be numpy source directories
+    elif os.path.isdir(p):
+        potential_numpy = os.path.join(p, 'numpy')
+        if os.path.isdir(potential_numpy):
+            setup_py = os.path.join(potential_numpy, 'setup.py')
+            pyproject = os.path.join(potential_numpy, 'pyproject.toml')
+            # If it looks like numpy source (has setup.py or pyproject.toml), remove it
+            if os.path.exists(setup_py) or os.path.exists(pyproject):
+                _paths_to_remove.append(p)
+
+for p in _paths_to_remove:
+    if p in sys.path:
+        sys.path.remove(p)
+
+# Step 2: Change to a safe working directory
 if os.path.exists("/app"):
-    # In Railway, use /app to avoid any path conflicts
     os.chdir("/app")
 elif os.path.exists("/tmp"):
-    # Fallback to /tmp as a safe directory
     os.chdir("/tmp")
 
-# Now import numpy from the correct location (installed package, not source)
+# Step 3: Import numpy from the correct location (installed package)
 try:
     import numpy as np
-    # Log success (will use loguru once imported)
     _numpy_path = getattr(np, '__file__', 'unknown')
+    _numpy_version = getattr(np, '__version__', 'unknown')
 except ImportError as e:
-    # Will log this later once loguru is imported
     _numpy_path = f"IMPORT_FAILED: {e}"
+    _numpy_version = "N/A"
 
-# Restore original working directory
+# Step 4: Restore working directory (but keep sys.path clean)
 os.chdir(_original_cwd)
+
+# Step 5: Re-add the original paths that were needed (but not the conflicting ones)
+# Add backend/src to path for quadrag imports
+_backend_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
+if _backend_src not in sys.path and os.path.isdir(_backend_src):
+    sys.path.insert(0, _backend_src)
 # ============================================================================
 
 import aiofiles
@@ -44,8 +69,9 @@ from loguru import logger
 # Log numpy import status
 if 'IMPORT_FAILED' in str(_numpy_path):
     logger.error(f"NumPy import failed: {_numpy_path}")
+    logger.error(f"Current sys.path: {sys.path}")
 else:
-    logger.info(f"NumPy pre-imported successfully from: {_numpy_path}")
+    logger.info(f"NumPy {_numpy_version} pre-imported successfully from: {_numpy_path}")
 
 # Import models first (lightweight)
 from quadrag.models import (

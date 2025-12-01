@@ -6,15 +6,17 @@ nixPkgs = ["python311", "python311Packages.pip", "python311Packages.setuptools",
 [phases.install]
 cmds = [
     "cd backend && python3.11 -m venv /app/venv",
-    "source /app/venv/bin/activate && cd backend && pip install --upgrade pip setuptools wheel",
-    # Install CPU-only PyTorch first to avoid CUDA dependencies (much faster, smaller)
-    # This prevents downloading several GB of CUDA libraries that Railway can't use anyway
-    # Quote the package spec to prevent shell from interpreting < as redirection
+    "source /app/venv/bin/activate && pip install --upgrade pip setuptools wheel",
+    # Install numpy FIRST with a stable version to avoid conflicts
+    "source /app/venv/bin/activate && pip install 'numpy>=1.24.0,<2.0.0'",
+    # Install CPU-only PyTorch (smaller, faster than CUDA version)
     "source /app/venv/bin/activate && pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.0.0,<2.1.0'",
-    # Install all other dependencies from requirements.txt (which now references CPU torch)
+    # Install all other dependencies from requirements.txt
     "source /app/venv/bin/activate && cd backend && pip install -r requirements.txt",
     # Install the package itself without dependencies (already installed above)
-    "source /app/venv/bin/activate && cd backend && pip install -e . --no-deps"
+    "source /app/venv/bin/activate && cd backend && pip install -e . --no-deps",
+    # Force reinstall numpy to ensure it's properly installed (fixes source directory issue)
+    "source /app/venv/bin/activate && pip install --force-reinstall --no-deps 'numpy>=1.24.0,<2.0.0'"
 ]
 
 [start]
