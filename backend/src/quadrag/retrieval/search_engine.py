@@ -142,63 +142,59 @@ class VideoSearchEngine:
                 # Limit to first 50 chunks to avoid blocking on all transcriptions
                 logger.warning(f"Embedding index not available, using text search on limited chunks: {e}")
                 
-                # Get limited chunks and force computation of transcriptions
-                # Use threading to avoid event loop conflicts with Pixeltable
-                import threading
+                # Try to get transcriptions using a simple iterative approach
                 limited_chunks = []
+                try:
+                    logger.info("Testing basic audio_view access...")
 
-                def collect_audio_chunks():
-                    nonlocal limited_chunks
+                    # First, let's just try to count how many chunks we have
                     try:
-                        logger.info("Collecting audio chunks in separate thread...")
-                        # Create new event loop for this thread
-                        import asyncio
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-
-                        try:
-                            # Try to collect chunks with transcriptions
-                            chunks = audio_view.select(
-                                audio_view.start_time_sec,
-                                audio_view.end_time_sec,
-                                audio_view.transcript_text,
-                            ).limit(10).collect()
-
-                            # Check if transcriptions are computed, if not, trigger computation
-                            if chunks and any(not str(chunk.get("transcript_text", "")).strip() for chunk in chunks):
-                                logger.info("Triggering lazy transcription computation...")
-                                # Force computation by accessing transcript_text
-                                for i, chunk in enumerate(chunks[:3]):  # Compute first 3 chunks
-                                    try:
-                                        transcription = str(chunk["transcript_text"])
-                                        logger.debug(f"Computed transcription for chunk {i}: '{transcription[:50]}...'")
-                                    except Exception as e:
-                                        logger.debug(f"Failed to compute transcription for chunk {i}: {e}")
-
-                                # Re-collect to get computed transcriptions
-                                chunks = audio_view.select(
-                                    audio_view.start_time_sec,
-                                    audio_view.end_time_sec,
-                                    audio_view.transcript_text,
-                                ).limit(10).collect()
-
-                            limited_chunks = chunks
-                            logger.info(f"Successfully collected {len(chunks)} audio chunks")
-
-                        finally:
-                            loop.close()
-
+                        count = audio_view.count()
+                        logger.info(f"Audio view has {count} chunks total")
                     except Exception as e:
-                        logger.warning(f"Failed to collect audio chunks in thread: {e}")
-                        limited_chunks = []
+                        logger.warning(f"Could not count audio chunks: {e}")
 
-                # Run collection in separate thread
-                collection_thread = threading.Thread(target=collect_audio_chunks)
-                collection_thread.start()
-                collection_thread.join(timeout=30)  # Wait up to 30 seconds
+                    # Try the simplest possible approach - just get first few transcriptions
+                    logger.info("Attempting to get transcriptions directly...")
 
-                if collection_thread.is_alive():
-                    logger.warning("Audio chunk collection timed out")
+                    # Create a simple query and try to iterate
+                    query = audio_view.select(
+                        audio_view.start_time_sec,
+                        audio_view.end_time_sec,
+                        audio_view.transcript_text,
+                    ).limit(5)
+
+                    # Try to iterate through the query results
+                    chunk_count = 0
+                    for chunk in query:  # Direct iteration instead of collect()
+                        try:
+                            start_time = chunk["start_time_sec"]
+                            end_time = chunk["end_time_sec"]
+                            transcription = str(chunk["transcript_text"])
+
+                            logger.debug(f"Chunk {chunk_count}: time {start_time}-{end_time}, transcription: '{transcription[:100]}...'")
+
+                            chunk_dict = {
+                                "start_time_sec": start_time,
+                                "end_time_sec": end_time,
+                                "transcript_text": transcription
+                            }
+                            limited_chunks.append(chunk_dict)
+                            chunk_count += 1
+
+                            if chunk_count >= 10:  # Limit to 10 chunks
+                                break
+
+                        except Exception as e:
+                            logger.warning(f"Failed to process chunk {chunk_count}: {e}")
+                            chunk_count += 1
+                            if chunk_count >= 10:
+                                break
+
+                    logger.info(f"Successfully extracted {len(limited_chunks)} transcriptions")
+
+                except Exception as e:
+                    logger.warning(f"Failed to extract transcriptions: {e}")
                     limited_chunks = []
                 
                 # Simple text matching (case-insensitive)
