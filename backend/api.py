@@ -377,9 +377,9 @@ async def _process_video_async(video_id: str):
 
         # Create Description Index (only if Image Index succeeded, as it depends on resized_frame)
         if IndexType.IMAGE in indexes_created_list:
-        logger.info(f"Creating Description Index for {video_id}")
+            logger.info(f"Creating Description Index for {video_id}")
             if get_indexer_lazy().create_description_index(video_id):
-            indexes_created_list.append(IndexType.DESCRIPTION)
+                indexes_created_list.append(IndexType.DESCRIPTION)
                 logger.info(f"Description Index created successfully for {video_id}")
             else:
                 logger.warning(f"Description Index creation failed for {video_id}")
