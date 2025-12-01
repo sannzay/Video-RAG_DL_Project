@@ -30,5 +30,9 @@ python -c 'import sys; print("Python path:", sys.path[:3]); import numpy as np; 
 echo "=== Testing API Import ==="
 python -c 'import sys; sys.path.insert(0, "."); print("Importing api.py..."); import api; print("api.py imported successfully")' 2>&1 || (echo 'API import failed!' && exit 1)
 
+echo "=== Testing FastAPI App Creation ==="
+python -c 'import sys; sys.path.insert(0, "."); import api; print(f"FastAPI app created: {api.app.title}")' 2>&1 || (echo 'FastAPI app creation failed!' && exit 1)
+
 echo "=== Launching FastAPI Application ==="
-exec python api.py 2>&1
+# Don't use exec so we can see if the startup fails
+python api.py 2>&1
