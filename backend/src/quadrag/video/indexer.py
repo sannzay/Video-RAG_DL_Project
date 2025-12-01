@@ -54,6 +54,8 @@ class VideoIndexer:
             # Create frames view
             logger.info(f"Creating frames view: {video_info.frames_view_name}")
             try:
+                logger.info(f"Attempting to create frame iterator with {settings.SPLIT_FRAMES_COUNT} frames")
+                logger.info(f"Video file: {video_table.video}")
                 frames_view = pxt.create_view(
                     video_info.frames_view_name,
                     video_table,
@@ -65,17 +67,27 @@ class VideoIndexer:
                 )
             except Exception as e:
                 logger.error(f"Failed to create frame iterator with {settings.SPLIT_FRAMES_COUNT} frames: {e}")
+                logger.error(f"Exception type: {type(e).__name__}")
+                import traceback
+                logger.error(f"Full traceback: {traceback.format_exc()}")
                 # Try with fewer frames as fallback
                 logger.info("Retrying with 10 frames...")
-                frames_view = pxt.create_view(
-                    video_info.frames_view_name,
-                    video_table,
-                    iterator=FrameIterator.create(
-                        video=video_table.video,
-                        num_frames=10
-                    ),
-                    if_exists="replace_force",
-                )
+                try:
+                    frames_view = pxt.create_view(
+                        video_info.frames_view_name,
+                        video_table,
+                        iterator=FrameIterator.create(
+                            video=video_table.video,
+                            num_frames=10
+                        ),
+                        if_exists="replace_force",
+                    )
+                except Exception as e2:
+                    logger.error(f"Failed even with 10 frames: {e2}")
+                    logger.error(f"Exception type: {type(e2).__name__}")
+                    import traceback
+                    logger.error(f"Full traceback: {traceback.format_exc()}")
+                    raise e2
 
             # Add resized frame column using custom UDF
             frames_view.add_computed_column(
