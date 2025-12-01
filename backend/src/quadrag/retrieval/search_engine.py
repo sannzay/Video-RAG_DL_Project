@@ -98,7 +98,18 @@ class VideoSearchEngine:
                 top_k = settings.TOP_K_AUDIO
 
             logger.info(f"Searching Audio Index with query: '{query_text[:50]}...'")
-            audio_view = self.video_info.audio_view
+
+            # Check if audio view exists
+            if not self.video_info.audio_view_name:
+                logger.info("Audio Index not available")
+                return []
+
+            # Try to get the audio view safely
+            try:
+                audio_view = self.video_info.audio_view
+            except Exception as e:
+                logger.error(f"Audio Index not accessible: {e}")
+                return []
 
             # Try similarity search if embedding index exists
             try:
@@ -132,67 +143,63 @@ class VideoSearchEngine:
                 logger.warning(f"Embedding index not available, using text search on limited chunks: {e}")
                 
                 # Get limited chunks and force computation of transcriptions
-                # This ensures some transcriptions are computed for search
+                # Use threading to avoid event loop conflicts with Pixeltable
+                import threading
                 limited_chunks = []
-                try:
-                    # Try to collect chunks synchronously first
-                    logger.info("Attempting to collect audio chunks synchronously...")
-                    limited_chunks = audio_view.select(
-                        audio_view.start_time_sec,
-                        audio_view.end_time_sec,
-                        audio_view.transcript_text,
-                    ).limit(10).collect()
 
-                    # Check if transcriptions are computed, if not, trigger computation
-                    if limited_chunks and any(not str(chunk.get("transcript_text", "")).strip() for chunk in limited_chunks):
-                        logger.info("Triggering lazy transcription computation...")
-                        # Force computation by iterating and accessing transcript_text
-                        for i, chunk in enumerate(limited_chunks[:3]):  # Compute first 3 chunks
-                            try:
-                                transcription = str(chunk["transcript_text"])  # This should trigger computation
-                                logger.debug(f"Computed transcription for chunk {i}: '{transcription[:50]}...'")
-                            except Exception as e:
-                                logger.debug(f"Failed to compute transcription for chunk {i}: {e}")
+                def collect_audio_chunks():
+                    nonlocal limited_chunks
+                    try:
+                        logger.info("Collecting audio chunks in separate thread...")
+                        # Create new event loop for this thread
+                        import asyncio
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
 
-                        # Re-collect to get computed transcriptions
                         try:
-                            limited_chunks = audio_view.select(
+                            # Try to collect chunks with transcriptions
+                            chunks = audio_view.select(
                                 audio_view.start_time_sec,
                                 audio_view.end_time_sec,
                                 audio_view.transcript_text,
                             ).limit(10).collect()
-                        except Exception as e:
-                            logger.warning(f"Failed to re-collect after computation trigger: {e}")
 
-                except Exception as e:
-                    logger.warning(f"Failed to collect audio chunks synchronously: {e}")
-                    # Try a simpler approach - just get chunks without transcriptions first
-                    try:
-                        logger.info("Falling back to collecting chunks without transcriptions...")
-                        basic_chunks = audio_view.select(
-                            audio_view.start_time_sec,
-                            audio_view.end_time_sec,
-                        ).limit(10).collect()
+                            # Check if transcriptions are computed, if not, trigger computation
+                            if chunks and any(not str(chunk.get("transcript_text", "")).strip() for chunk in chunks):
+                                logger.info("Triggering lazy transcription computation...")
+                                # Force computation by accessing transcript_text
+                                for i, chunk in enumerate(chunks[:3]):  # Compute first 3 chunks
+                                    try:
+                                        transcription = str(chunk["transcript_text"])
+                                        logger.debug(f"Computed transcription for chunk {i}: '{transcription[:50]}...'")
+                                    except Exception as e:
+                                        logger.debug(f"Failed to compute transcription for chunk {i}: {e}")
 
-                        # Manually trigger transcription computation for each chunk
+                                # Re-collect to get computed transcriptions
+                                chunks = audio_view.select(
+                                    audio_view.start_time_sec,
+                                    audio_view.end_time_sec,
+                                    audio_view.transcript_text,
+                                ).limit(10).collect()
+
+                            limited_chunks = chunks
+                            logger.info(f"Successfully collected {len(chunks)} audio chunks")
+
+                        finally:
+                            loop.close()
+
+                    except Exception as e:
+                        logger.warning(f"Failed to collect audio chunks in thread: {e}")
                         limited_chunks = []
-                        for chunk in basic_chunks:
-                            try:
-                                # Access transcription to trigger computation
-                                transcription = str(chunk["transcript_text"])
-                                chunk_copy = chunk.copy()
-                                chunk_copy["transcript_text"] = transcription
-                                limited_chunks.append(chunk_copy)
-                            except Exception as chunk_e:
-                                logger.debug(f"Failed to compute transcription for chunk: {chunk_e}")
-                                # Add chunk without transcription
-                                chunk_copy = chunk.copy()
-                                chunk_copy["transcript_text"] = ""
-                                limited_chunks.append(chunk_copy)
 
-                    except Exception as fallback_e:
-                        logger.warning(f"Fallback collection also failed: {fallback_e}")
-                        limited_chunks = []
+                # Run collection in separate thread
+                collection_thread = threading.Thread(target=collect_audio_chunks)
+                collection_thread.start()
+                collection_thread.join(timeout=30)  # Wait up to 30 seconds
+
+                if collection_thread.is_alive():
+                    logger.warning("Audio chunk collection timed out")
+                    limited_chunks = []
                 
                 # Simple text matching (case-insensitive)
                 query_lower = query_text.lower()
@@ -253,16 +260,14 @@ class VideoSearchEngine:
 
             logger.info(f"Searching Description Index with query: '{query_text[:50]}...'")
 
-            # Check if frames_view exists
-            if not hasattr(self.video_info, 'frames_view') or not self.video_info.frames_view:
+            # Check if frames_view exists (avoid triggering property getter that calls pxt.get_table)
+            if not self.video_info.frames_view_name:
                 logger.info("Description Index not available (requires image index)")
                 return []
 
-            # Additional check: ensure frames_view actually exists in Pixeltable
+            # Try to get the frames view safely
             try:
                 frames_view = self.video_info.frames_view
-                # Try to access a property to verify the view exists
-                _ = frames_view._name
             except Exception as e:
                 logger.warning(f"Description Index not accessible: {e}")
                 return []
@@ -320,16 +325,14 @@ class VideoSearchEngine:
 
             logger.info(f"Searching Domain Index with query: '{query_text[:50]}...'")
 
-            # Check if frames_view exists
-            if not hasattr(self.video_info, 'frames_view') or not self.video_info.frames_view:
+            # Check if frames_view exists (avoid triggering property getter that calls pxt.get_table)
+            if not self.video_info.frames_view_name:
                 logger.info("Domain Index not available (requires image index)")
                 return []
 
-            # Additional check: ensure frames_view actually exists in Pixeltable
+            # Try to get the frames view safely
             try:
                 frames_view = self.video_info.frames_view
-                # Try to access a property to verify the view exists
-                _ = frames_view._name
             except Exception as e:
                 logger.warning(f"Domain Index not accessible: {e}")
                 return []
