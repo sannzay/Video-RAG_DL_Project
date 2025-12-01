@@ -1,5 +1,6 @@
 """Streamlit UI for QuadRAG - Modern & Aesthetic Design."""
 
+import os
 import time
 import uuid
 from datetime import datetime
@@ -7,7 +8,11 @@ from typing import Dict, List, Optional
 
 import requests
 import streamlit as st
+from dotenv import load_dotenv
 from PIL import Image
+
+# Load environment variables
+load_dotenv()
 
 # Page configuration
 st.set_page_config(
@@ -22,8 +27,21 @@ st.set_page_config(
     }
 )
 
-# API endpoint
-API_BASE_URL = "http://localhost:8000"
+# API endpoint - Fixed Railway backend URL
+# Can be overridden with QUADRAG_API_URL environment variable for local development
+RAILWAY_BACKEND_URL = "https://video-ragdlproject-production.up.railway.app"
+
+def get_api_base_url() -> str:
+    """Get API base URL from environment variable or use Railway default."""
+    # Check environment variable first (for local development override)
+    env_url = os.getenv("QUADRAG_API_URL")
+    if env_url:
+        return env_url
+    # Default to Railway backend
+    return RAILWAY_BACKEND_URL
+
+# Initialize API_BASE_URL
+API_BASE_URL = get_api_base_url()
 
 # Modern CSS with gradient design
 st.markdown("""
@@ -402,6 +420,160 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+def check_api_connection() -> tuple:
+    """Check if the API backend is accessible."""
+    # Get current API URL (may have been updated)
+    current_url = get_api_base_url()
+    
+    # Try health endpoint first, then root endpoint
+    endpoints_to_try = ["/health", "/"]
+    
+    for endpoint in endpoints_to_try:
+        try:
+            # Disable SSL verification warnings for Railway (they use valid certs)
+            response = requests.get(
+                f"{current_url}{endpoint}", 
+                timeout=10,
+                verify=True  # Keep SSL verification enabled
+            )
+            if response.status_code == 200:
+                return True, "Connected"
+            else:
+                # If we get a response (even non-200), the server is reachable
+                return False, f"Backend returned status {response.status_code}"
+        except requests.exceptions.SSLError as e:
+            return False, f"SSL Error: {str(e)[:100]}"
+        except requests.exceptions.ConnectionError as e:
+            # Check if it's a specific connection error
+            error_str = str(e).lower()
+            if "name resolution" in error_str or "nodename nor servname" in error_str:
+                return False, "DNS resolution failed - Check URL"
+            elif "refused" in error_str:
+                return False, "Connection refused - Backend may be down"
+            else:
+                return False, f"Connection error: {str(e)[:100]}"
+        except requests.exceptions.Timeout:
+            # Only report timeout if all endpoints fail
+            if endpoint == endpoints_to_try[-1]:
+                return False, "Connection timeout - Backend not responding"
+            continue
+        except Exception as e:
+            # For other errors, return the error message
+            return False, f"Error: {str(e)[:100]}"
+    
+    # If we get here, all endpoints failed
+    return False, "Backend not reachable"
+
+
+def show_connection_status():
+    """Display API connection status in the sidebar."""
+    # Get current API URL
+    current_api_url = get_api_base_url()
+    
+    # Update global API_BASE_URL
+    global API_BASE_URL
+    API_BASE_URL = current_api_url
+    
+    is_connected, message = check_api_connection()
+    
+    if is_connected:
+        st.sidebar.markdown("""
+        <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+                    color: white; 
+                    padding: 0.75rem; 
+                    border-radius: 10px; 
+                    margin-bottom: 1rem;
+                    text-align: center;
+                    font-weight: 600;">
+            ✅ Backend Connected
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.sidebar.markdown(f"""
+        <div style="background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); 
+                    color: white; 
+                    padding: 0.75rem; 
+                    border-radius: 10px; 
+                    margin-bottom: 1rem;
+                    text-align: center;
+                    font-weight: 600;">
+            ❌ Backend Disconnected
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.sidebar.expander("🔧 Connection Help", expanded=True):
+            st.markdown(f"""
+            **Backend URL:**  
+            `{current_api_url}`
+            
+            **Status:** {message}
+            """)
+            
+            # Diagnostic button
+            if st.button("🔍 Run Diagnostics", use_container_width=True):
+                with st.spinner("Running diagnostics..."):
+                    diagnostic_info = []
+                    
+                    # Test 1: Basic connectivity
+                    try:
+                        import socket
+                        from urllib.parse import urlparse
+                        parsed = urlparse(current_api_url)
+                        host = parsed.hostname
+                        port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+                        
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(5)
+                        result = sock.connect_ex((host, port))
+                        sock.close()
+                        
+                        if result == 0:
+                            diagnostic_info.append("✅ Port is open and reachable")
+                        else:
+                            diagnostic_info.append(f"❌ Port {port} is not reachable")
+                    except Exception as e:
+                        diagnostic_info.append(f"⚠️ Port check failed: {str(e)[:50]}")
+                    
+                    # Test 2: HTTP/HTTPS endpoint
+                    try:
+                        test_response = requests.get(current_api_url, timeout=5, verify=True)
+                        diagnostic_info.append(f"✅ Root endpoint responded: {test_response.status_code}")
+                    except requests.exceptions.SSLError as e:
+                        diagnostic_info.append(f"❌ SSL Error: {str(e)[:80]}")
+                    except requests.exceptions.ConnectionError:
+                        diagnostic_info.append("❌ Cannot establish connection")
+                    except Exception as e:
+                        diagnostic_info.append(f"⚠️ Error: {str(e)[:80]}")
+                    
+                    # Test 3: Health endpoint
+                    try:
+                        health_response = requests.get(f"{current_api_url}/health", timeout=5, verify=True)
+                        if health_response.status_code == 200:
+                            diagnostic_info.append("✅ Health endpoint is working")
+                        else:
+                            diagnostic_info.append(f"⚠️ Health endpoint returned: {health_response.status_code}")
+                    except Exception as e:
+                        diagnostic_info.append(f"❌ Health endpoint failed: {str(e)[:80]}")
+                    
+                    # Display diagnostics
+                    st.markdown("**Diagnostics Results:**")
+                    for info in diagnostic_info:
+                        st.text(info)
+            
+            st.markdown("---")
+            st.markdown("""
+            **Troubleshooting:**
+            1. Verify the backend is running on Railway dashboard
+            2. Check Railway deployment logs for errors
+            3. Ensure the backend URL is correct
+            4. Check your internet connection
+            5. For local development, set `QUADRAG_API_URL=http://localhost:8000` in your `.env` file
+            """)
+            
+            if st.button("🔄 Retry Connection", use_container_width=True):
+                st.rerun()
+
+
 def initialize_session_state():
     """Initialize Streamlit session state."""
     if "session_id" not in st.session_state:
@@ -531,39 +703,65 @@ def upload_video_section():
             st.info(f"📹 **{uploaded_file.name}** ({file_size_mb:.2f} MB)")
             
             if st.button("🚀 Upload and Process", type="primary", use_container_width=True):
+                # Check connection first
+                current_url = get_api_base_url()
+                is_connected, message = check_api_connection()
+                if not is_connected:
+                    st.error(f"❌ Cannot connect to backend: {message}")
+                    st.info(f"**Backend URL:** `{current_url}`\n\n**Troubleshooting:**\n1. Verify Railway backend is running\n2. Check your internet connection\n3. For local development, set `QUADRAG_API_URL=http://localhost:8000`")
+                    return
+                
                 with st.spinner("📤 Uploading video..."):
-                    # Upload video
-                    files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
-                    response = requests.post(f"{API_BASE_URL}/upload-video", files=files)
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        video_id = data["video_id"]
+                    try:
+                        # Upload video
+                        files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
+                        response = requests.post(f"{current_url}/upload-video", files=files, timeout=60)
                         
-                        st.success(f"✅ Video uploaded successfully!")
-                        
-                        # Start processing
-                        with st.spinner("⚙️ Processing video (creating indexes)..."):
-                            process_response = requests.post(
-                                f"{API_BASE_URL}/process-video",
-                                json={"video_id": video_id}
-                            )
+                        if response.status_code == 200:
+                            data = response.json()
+                            video_id = data["video_id"]
                             
-                            if process_response.status_code == 200:
-                                st.session_state.uploaded_videos[video_id] = {
-                                    "filename": uploaded_file.name,
-                                    "upload_time": datetime.now(),
-                                    "status": "processing",
-                                }
-                                st.session_state.active_video_id = video_id
-                                
-                                st.info("🔄 Video is being processed. This may take a few minutes. You can check the status in the sidebar.")
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error("❌ Failed to start processing")
-                    else:
-                        st.error("❌ Failed to upload video")
+                            st.success(f"✅ Video uploaded successfully!")
+                            
+                            # Start processing
+                            with st.spinner("⚙️ Processing video (creating indexes)..."):
+                                try:
+                                    current_url = get_api_base_url()
+                                    process_response = requests.post(
+                                        f"{current_url}/process-video",
+                                        json={"video_id": video_id},
+                                        timeout=30
+                                    )
+                                    
+                                    if process_response.status_code == 200:
+                                        st.session_state.uploaded_videos[video_id] = {
+                                            "filename": uploaded_file.name,
+                                            "upload_time": datetime.now(),
+                                            "status": "processing",
+                                        }
+                                        st.session_state.active_video_id = video_id
+                                        
+                                        st.info("🔄 Video is being processed. This may take a few minutes. You can check the status in the sidebar.")
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ Failed to start processing: {process_response.status_code}")
+                                        if process_response.text:
+                                            st.error(f"Error: {process_response.text}")
+                                except requests.exceptions.RequestException as e:
+                                    st.error(f"❌ Connection error while processing: {str(e)}")
+                        else:
+                            st.error(f"❌ Failed to upload video: Status {response.status_code}")
+                            if response.text:
+                                st.error(f"Error: {response.text}")
+                    except requests.exceptions.ConnectionError:
+                        current_url = get_api_base_url()
+                        st.error(f"❌ Cannot connect to backend at `{current_url}`")
+                        st.info("**Please check:**\n1. Railway backend is running\n2. Your internet connection is active\n3. Backend URL is correct")
+                    except requests.exceptions.Timeout:
+                        st.error("❌ Request timed out. The backend may be slow or unresponsive.")
+                    except Exception as e:
+                        st.error(f"❌ Unexpected error: {str(e)}")
 
 
 def show_video_library():
@@ -601,7 +799,8 @@ def show_video_library():
     for video_id, video_info in st.session_state.uploaded_videos.items():
         # Get status from API
         try:
-            status_response = requests.get(f"{API_BASE_URL}/video/{video_id}/status")
+            current_url = get_api_base_url()
+            status_response = requests.get(f"{current_url}/video/{video_id}/status", timeout=5)
             if status_response.status_code == 200:
                 status_data = status_response.json()
                 status = status_data["status"]
@@ -609,7 +808,8 @@ def show_video_library():
             else:
                 status = video_info.get("status", "unknown")
                 indexes = []
-        except:
+        except requests.exceptions.RequestException:
+            # If connection fails, keep last known status
             status = video_info.get("status", "unknown")
             indexes = []
         
@@ -697,8 +897,9 @@ def show_domain_context_panel():
                         # Update domain index for active video
                         if st.session_state.active_video_id:
                             with st.spinner("Updating domain index..."):
+                                current_url = get_api_base_url()
                                 response = requests.post(
-                                    f"{API_BASE_URL}/set-domain-context",
+                                    f"{current_url}/set-domain-context",
                                     json={
                                         "session_id": st.session_state.session_id,
                                         "video_id": st.session_state.active_video_id,
@@ -832,8 +1033,9 @@ def show_chat_interface():
         # Set domain context if not already set
         if st.session_state.domain_context:
             try:
+                current_url = get_api_base_url()
                 requests.post(
-                    f"{API_BASE_URL}/set-domain-context",
+                    f"{current_url}/set-domain-context",
                     json={
                         "session_id": st.session_state.session_id,
                         "video_id": st.session_state.active_video_id,
@@ -846,14 +1048,16 @@ def show_chat_interface():
         # Call chat API
         with st.spinner("🤔 Thinking..."):
             try:
+                current_url = get_api_base_url()
                 response = requests.post(
-                    f"{API_BASE_URL}/chat",
+                    f"{current_url}/chat",
                     json={
                         "session_id": st.session_state.session_id,
                         "video_id": st.session_state.active_video_id,
                         "query": user_query,
                         "domain_context": st.session_state.domain_context,
-                    }
+                    },
+                    timeout=120  # Chat can take longer
                 )
                 
                 if response.status_code == 200:
@@ -864,10 +1068,24 @@ def show_chat_interface():
                         "citations": data.get("citations", []),
                     })
                 else:
+                    error_msg = f"Backend returned error {response.status_code}"
+                    if response.text:
+                        error_msg += f": {response.text[:200]}"
                     st.session_state.chat_history.append({
                         "role": "assistant",
-                        "content": "Sorry, I encountered an error processing your request. Please try again.",
+                        "content": f"Sorry, I encountered an error: {error_msg}",
                     })
+            except requests.exceptions.ConnectionError:
+                current_url = get_api_base_url()
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": f"❌ Cannot connect to backend at `{current_url}`. Please check your connection and ensure the backend is running.",
+                })
+            except requests.exceptions.Timeout:
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": "❌ Request timed out. The backend may be slow or unresponsive. Please try again.",
+                })
             except Exception as e:
                 st.session_state.chat_history.append({
                     "role": "assistant",
@@ -880,6 +1098,9 @@ def show_chat_interface():
 def main():
     """Main application."""
     initialize_session_state()
+    
+    # Show connection status in sidebar
+    show_connection_status()
     
     # Show domain context dialog if not set
     if not st.session_state.domain_set:
