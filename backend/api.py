@@ -445,7 +445,7 @@ async def get_video_status(video_id: str):
 
         # Get created indexes from our tracking
         indexes_created = video_indexes.get(video_id, [])
-        
+
         # Also verify from registry if available
         video_info = get_video_from_registry(video_id)
         if video_info and not indexes_created:
@@ -473,6 +473,7 @@ async def get_video_status(video_id: str):
             except:
                 pass
 
+        logger.debug(f"Video {video_id} status: {status}, indexes: {indexes_created}")
         return VideoStatusResponse(
             video_id=video_id,
             status=status,
@@ -651,11 +652,11 @@ async def list_videos():
     """
     try:
         all_videos = get_all_videos()
-        
+
         video_metadata_list = []
         for video_id, video_info in all_videos.items():
             status = processing_status.get(video_id, ProcessingStatus.COMPLETED)
-            
+
             # Get created indexes
             indexes_created = []
             try:
@@ -687,6 +688,17 @@ async def list_videos():
     except Exception as e:
         logger.error(f"Error listing videos: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/debug/status")
+async def debug_status():
+    """Debug endpoint to check all video processing status."""
+    return {
+        "processing_status": {k: str(v) for k, v in processing_status.items()},
+        "video_indexes": {k: [str(idx) for idx in v] for k, v in video_indexes.items()},
+        "processing_errors": processing_errors,
+        "registry_videos": list(get_all_videos().keys()) if get_all_videos else []
+    }
 
 
 if __name__ == "__main__":
