@@ -8,11 +8,44 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
+# ============================================================================
+# CRITICAL: Pre-import numpy BEFORE any heavy imports to avoid the error:
+# "you should not try to import numpy from its source directory"
+# This must happen before pixeltable, torch, transformers, etc. are imported.
+# ============================================================================
+# First, ensure we're in a safe working directory
+_original_cwd = os.getcwd()
+if os.path.exists("/app"):
+    # In Railway, use /app to avoid any path conflicts
+    os.chdir("/app")
+elif os.path.exists("/tmp"):
+    # Fallback to /tmp as a safe directory
+    os.chdir("/tmp")
+
+# Now import numpy from the correct location (installed package, not source)
+try:
+    import numpy as np
+    # Log success (will use loguru once imported)
+    _numpy_path = getattr(np, '__file__', 'unknown')
+except ImportError as e:
+    # Will log this later once loguru is imported
+    _numpy_path = f"IMPORT_FAILED: {e}"
+
+# Restore original working directory
+os.chdir(_original_cwd)
+# ============================================================================
+
 import aiofiles
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
+
+# Log numpy import status
+if 'IMPORT_FAILED' in str(_numpy_path):
+    logger.error(f"NumPy import failed: {_numpy_path}")
+else:
+    logger.info(f"NumPy pre-imported successfully from: {_numpy_path}")
 
 # Import models first (lightweight)
 from quadrag.models import (
@@ -321,31 +354,10 @@ def _process_video_sync(video_id: str):
     Args:
         video_id: Video identifier
     """
-    # Ensure we're in a safe working directory to avoid numpy import issues
-    # The error "you should not try to import numpy from its source directory"
-    # occurs when the current working directory contains numpy source code
-    original_cwd = os.getcwd()
-    
-    # Use /app as working directory in Railway, or backend directory locally
-    # This ensures we're not in any directory that might contain numpy source
-    if os.path.exists("/app"):
-        safe_dir = "/app"
-    else:
-        safe_dir = Path(__file__).parent.absolute()
+    # Note: NumPy is pre-imported at module level to avoid the "source directory" error
+    # See the import section at the top of this file for details
     
     try:
-        # Change to safe directory before importing heavy dependencies
-        os.chdir(safe_dir)
-        logger.info(f"Changed working directory to: {safe_dir} (original: {original_cwd})")
-        
-        # Import numpy early to ensure it's loaded from the installed package, not source
-        # This prevents the "source directory" error
-        try:
-            import numpy
-            logger.debug(f"NumPy imported successfully from: {numpy.__file__}")
-        except ImportError as e:
-            logger.warning(f"NumPy import check failed: {e}")
-        
         # Use asyncio.run() which properly sets up the event loop and task context
         # This ensures Pixeltable's internal async operations have proper task context
         asyncio.run(_process_video_async(video_id))
@@ -355,12 +367,6 @@ def _process_video_sync(video_id: str):
         logger.error(traceback.format_exc())
         processing_status[video_id] = ProcessingStatus.FAILED
         processing_errors[video_id] = str(e)
-    finally:
-        # Restore original working directory
-        try:
-            os.chdir(original_cwd)
-        except:
-            pass
 
 
 async def _process_video_background(video_id: str):
