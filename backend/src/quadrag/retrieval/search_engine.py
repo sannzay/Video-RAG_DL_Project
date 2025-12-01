@@ -135,67 +135,64 @@ class VideoSearchEngine:
                 # This ensures some transcriptions are computed for search
                 limited_chunks = []
                 try:
-                    import asyncio
+                    # Try to collect chunks synchronously first
+                    logger.info("Attempting to collect audio chunks synchronously...")
+                    limited_chunks = audio_view.select(
+                        audio_view.start_time_sec,
+                        audio_view.end_time_sec,
+                        audio_view.transcript_text,
+                    ).limit(10).collect()
 
-                    # Use asyncio.run_in_executor to avoid event loop conflicts
-                    def collect_chunks():
+                    # Check if transcriptions are computed, if not, trigger computation
+                    if limited_chunks and any(not str(chunk.get("transcript_text", "")).strip() for chunk in limited_chunks):
+                        logger.info("Triggering lazy transcription computation...")
+                        # Force computation by iterating and accessing transcript_text
+                        for i, chunk in enumerate(limited_chunks[:3]):  # Compute first 3 chunks
+                            try:
+                                transcription = str(chunk["transcript_text"])  # This should trigger computation
+                                logger.debug(f"Computed transcription for chunk {i}: '{transcription[:50]}...'")
+                            except Exception as e:
+                                logger.debug(f"Failed to compute transcription for chunk {i}: {e}")
+
+                        # Re-collect to get computed transcriptions
                         try:
-                            # First try to get chunks with transcriptions computed
-                            chunks = audio_view.select(
+                            limited_chunks = audio_view.select(
                                 audio_view.start_time_sec,
                                 audio_view.end_time_sec,
                                 audio_view.transcript_text,
-                            ).limit(10).collect()  # Start with fewer chunks to force computation
-                            return chunks
+                            ).limit(10).collect()
                         except Exception as e:
-                            logger.warning(f"Failed to collect audio chunks: {e}")
-                            return []
-
-                    # Run in thread pool to avoid event loop issues
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        limited_chunks = loop.run_until_complete(
-                            asyncio.get_event_loop().run_in_executor(None, collect_chunks)
-                        )
-                    finally:
-                        loop.close()
-
-                    # If we got chunks but they have empty transcriptions, try to trigger computation
-                    if limited_chunks and any(not str(chunk.get("transcript_text", "")).strip() for chunk in limited_chunks):
-                        logger.info("Triggering transcription computation for search...")
-                        # Force computation by accessing the transcript_text field
-                        for chunk in limited_chunks[:5]:  # Compute first 5
-                            try:
-                                _ = str(chunk.get("transcript_text", ""))
-                            except Exception as e:
-                                logger.debug(f"Failed to compute transcription for chunk: {e}")
-
-                        # Re-fetch to get computed transcriptions
-                        def collect_chunks_again():
-                            try:
-                                chunks = audio_view.select(
-                                    audio_view.start_time_sec,
-                                    audio_view.end_time_sec,
-                                    audio_view.transcript_text,
-                                ).limit(10).collect()
-                                return chunks
-                            except Exception as e:
-                                logger.warning(f"Failed to re-collect audio chunks: {e}")
-                                return limited_chunks  # Return original chunks if re-collection fails
-
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        try:
-                            limited_chunks = loop.run_until_complete(
-                                asyncio.get_event_loop().run_in_executor(None, collect_chunks_again)
-                            )
-                        finally:
-                            loop.close()
+                            logger.warning(f"Failed to re-collect after computation trigger: {e}")
 
                 except Exception as e:
-                    logger.warning(f"Failed to collect audio chunks with executor: {e}")
-                    limited_chunks = []
+                    logger.warning(f"Failed to collect audio chunks synchronously: {e}")
+                    # Try a simpler approach - just get chunks without transcriptions first
+                    try:
+                        logger.info("Falling back to collecting chunks without transcriptions...")
+                        basic_chunks = audio_view.select(
+                            audio_view.start_time_sec,
+                            audio_view.end_time_sec,
+                        ).limit(10).collect()
+
+                        # Manually trigger transcription computation for each chunk
+                        limited_chunks = []
+                        for chunk in basic_chunks:
+                            try:
+                                # Access transcription to trigger computation
+                                transcription = str(chunk["transcript_text"])
+                                chunk_copy = chunk.copy()
+                                chunk_copy["transcript_text"] = transcription
+                                limited_chunks.append(chunk_copy)
+                            except Exception as chunk_e:
+                                logger.debug(f"Failed to compute transcription for chunk: {chunk_e}")
+                                # Add chunk without transcription
+                                chunk_copy = chunk.copy()
+                                chunk_copy["transcript_text"] = ""
+                                limited_chunks.append(chunk_copy)
+
+                    except Exception as fallback_e:
+                        logger.warning(f"Fallback collection also failed: {fallback_e}")
+                        limited_chunks = []
                 
                 # Simple text matching (case-insensitive)
                 query_lower = query_text.lower()
@@ -296,7 +293,9 @@ class VideoSearchEngine:
             return retrieval_results
 
         except Exception as e:
-            logger.error(f"Error searching Description Index: {e}")
+            logger.error(f"Error searching Description Index: {type(e).__name__}: {e}")
+            import traceback
+            logger.debug(f"Description search traceback: {traceback.format_exc()}")
             return []
 
     def search_domain_index(
@@ -367,7 +366,9 @@ class VideoSearchEngine:
             return retrieval_results
 
         except Exception as e:
-            logger.error(f"Error searching Domain Index: {e}")
+            logger.error(f"Error searching Domain Index: {type(e).__name__}: {e}")
+            import traceback
+            logger.debug(f"Domain search traceback: {traceback.format_exc()}")
             return []
 
     def search_all_indexes(
