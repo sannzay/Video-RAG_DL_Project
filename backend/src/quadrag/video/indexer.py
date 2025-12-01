@@ -73,15 +73,15 @@ class VideoIndexer:
                 # Try with fewer frames as fallback
                 logger.info("Retrying with 10 frames...")
                 try:
-                frames_view = pxt.create_view(
-                    video_info.frames_view_name,
-                    video_table,
-                    iterator=FrameIterator.create(
-                        video=video_table.video,
-                        num_frames=10
-                    ),
-                    if_exists="replace_force",
-                )
+                    frames_view = pxt.create_view(
+                        video_info.frames_view_name,
+                        video_table,
+                        iterator=FrameIterator.create(
+                            video=video_table.video,
+                            num_frames=10
+                        ),
+                        if_exists="replace_force",
+                    )
                 except Exception as e2:
                     logger.error(f"Failed even with 10 frames: {e2}")
                     logger.error(f"Exception type: {type(e2).__name__}")
