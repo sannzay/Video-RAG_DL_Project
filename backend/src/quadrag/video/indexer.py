@@ -73,15 +73,15 @@ class VideoIndexer:
                 # Try with fewer frames as fallback
                 logger.info("Retrying with 10 frames...")
                 try:
-                    frames_view = pxt.create_view(
-                        video_info.frames_view_name,
-                        video_table,
-                        iterator=FrameIterator.create(
-                            video=video_table.video,
-                            num_frames=10
-                        ),
-                        if_exists="replace_force",
-                    )
+                frames_view = pxt.create_view(
+                    video_info.frames_view_name,
+                    video_table,
+                    iterator=FrameIterator.create(
+                        video=video_table.video,
+                        num_frames=10
+                    ),
+                    if_exists="replace_force",
+                )
                 except Exception as e2:
                     logger.error(f"Failed even with 10 frames: {e2}")
                     logger.error(f"Exception type: {type(e2).__name__}")
@@ -191,6 +191,28 @@ class VideoIndexer:
                 )
                 logger.info("Text extraction column added successfully (will compute on-demand)")
 
+            # Force computation of transcriptions now to avoid lazy loading issues during search
+            logger.info("Pre-computing transcriptions to ensure they are available for search...")
+            try:
+                # Collect all chunks to force transcription computation
+                all_chunks = audio_view.select(
+                    audio_view.start_time_sec,
+                    audio_view.end_time_sec,
+                    audio_view.transcript_text,
+                ).collect()
+
+                logger.info(f"Successfully pre-computed {len(all_chunks)} transcriptions")
+                for i, chunk in enumerate(all_chunks):
+                    transcription = str(chunk.get("transcript_text", ""))
+                    if transcription.strip():
+                        logger.debug(f"Chunk {i}: '{transcription[:100]}...'")
+                    else:
+                        logger.warning(f"Chunk {i} has empty transcription")
+
+            except Exception as e:
+                logger.warning(f"Failed to pre-compute transcriptions: {e}")
+                logger.info("Transcriptions will be computed lazily during search")
+
             # Skip embedding index creation to avoid blocking
             # Embedding index creation would require all transcriptions to be computed first
             # which would block for 10-30 minutes. Instead, we'll use text-based search
@@ -200,7 +222,7 @@ class VideoIndexer:
             logger.info("Note: Embedding index can be created later via separate endpoint if needed")
 
             logger.info(f"Successfully created Audio Index structure for video {video_id}")
-            logger.info("Note: Transcriptions will compute lazily when queried")
+            logger.info("Transcriptions pre-computed and available for search")
             return True
 
         except Exception as e:

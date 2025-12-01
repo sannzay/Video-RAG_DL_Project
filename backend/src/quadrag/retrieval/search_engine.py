@@ -142,59 +142,27 @@ class VideoSearchEngine:
                 # Limit to first 50 chunks to avoid blocking on all transcriptions
                 logger.warning(f"Embedding index not available, using text search on limited chunks: {e}")
                 
-                # Try to get transcriptions using a simple iterative approach
-                limited_chunks = []
+                # Collect audio chunks with pre-computed transcriptions
                 try:
-                    logger.info("Testing basic audio_view access...")
-
-                    # First, let's just try to count how many chunks we have
-                    try:
-                        count = audio_view.count()
-                        logger.info(f"Audio view has {count} chunks total")
-                    except Exception as e:
-                        logger.warning(f"Could not count audio chunks: {e}")
-
-                    # Try the simplest possible approach - just get first few transcriptions
-                    logger.info("Attempting to get transcriptions directly...")
-
-                    # Create a simple query and try to iterate
-                    query = audio_view.select(
+                    logger.info("Collecting audio chunks with pre-computed transcriptions...")
+                    limited_chunks = audio_view.select(
                         audio_view.start_time_sec,
                         audio_view.end_time_sec,
                         audio_view.transcript_text,
-                    ).limit(5)
+                    ).limit(10).collect()
 
-                    # Try to iterate through the query results
-                    chunk_count = 0
-                    for chunk in query:  # Direct iteration instead of collect()
-                        try:
-                            start_time = chunk["start_time_sec"]
-                            end_time = chunk["end_time_sec"]
-                            transcription = str(chunk["transcript_text"])
+                    logger.info(f"Successfully collected {len(limited_chunks)} audio chunks")
 
-                            logger.debug(f"Chunk {chunk_count}: time {start_time}-{end_time}, transcription: '{transcription[:100]}...'")
-
-                            chunk_dict = {
-                                "start_time_sec": start_time,
-                                "end_time_sec": end_time,
-                                "transcript_text": transcription
-                            }
-                            limited_chunks.append(chunk_dict)
-                            chunk_count += 1
-
-                            if chunk_count >= 10:  # Limit to 10 chunks
-                                break
-
-                        except Exception as e:
-                            logger.warning(f"Failed to process chunk {chunk_count}: {e}")
-                            chunk_count += 1
-                            if chunk_count >= 10:
-                                break
-
-                    logger.info(f"Successfully extracted {len(limited_chunks)} transcriptions")
+                    # Log transcription status for debugging
+                    for i, chunk in enumerate(limited_chunks):
+                        transcription = str(chunk.get("transcript_text", ""))
+                        if transcription.strip():
+                            logger.debug(f"Chunk {i}: '{transcription[:100]}...'")
+                        else:
+                            logger.warning(f"Chunk {i} has empty transcription")
 
                 except Exception as e:
-                    logger.warning(f"Failed to extract transcriptions: {e}")
+                    logger.warning(f"Failed to collect audio chunks: {e}")
                     limited_chunks = []
                 
                 # Simple text matching (case-insensitive)
