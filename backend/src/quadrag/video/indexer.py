@@ -73,15 +73,15 @@ class VideoIndexer:
                 # Try with fewer frames as fallback
                 logger.info("Retrying with 10 frames...")
                 try:
-                    frames_view = pxt.create_view(
-                        video_info.frames_view_name,
-                        video_table,
-                        iterator=FrameIterator.create(
-                            video=video_table.video,
-                            num_frames=10
-                        ),
-                        if_exists="replace_force",
-                    )
+                frames_view = pxt.create_view(
+                    video_info.frames_view_name,
+                    video_table,
+                    iterator=FrameIterator.create(
+                        video=video_table.video,
+                        num_frames=10
+                    ),
+                    if_exists="replace_force",
+                )
                 except Exception as e2:
                     logger.error(f"Failed even with 10 frames: {e2}")
                     logger.error(f"Exception type: {type(e2).__name__}")
@@ -279,9 +279,28 @@ class VideoIndexer:
             if not video_info:
                 raise ValueError(f"Video {video_id} not found in registry")
 
-            # Check if frames_view exists (requires image index)
+            # Check if frames_view exists and is accessible (requires image index)
             if not hasattr(video_info, 'frames_view') or not video_info.frames_view:
-                logger.warning(f"Cannot create Domain Index for video {video_id}: Image index not available")
+                logger.warning(f"Cannot create Domain Index for video {video_id}: Image index not available (frames_view attribute missing)")
+                logger.info(f"Domain context will be used for text-based search only")
+                # Still update the domain view to indicate domain context is set
+                domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
+                update_domain_view(video_id, domain_view_name)
+                return True
+
+            # Try to access frames_view to ensure it exists in Pixeltable
+            try:
+                frames_view = video_info.frames_view
+                # Test if frames_view is actually accessible by checking if it has data
+                test_count = frames_view.count()
+                if test_count == 0:
+                    logger.warning(f"Frames view exists but is empty for video {video_id}")
+                    logger.info(f"Domain context will be used for text-based search only")
+                    domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
+                    update_domain_view(video_id, domain_view_name)
+                    return True
+            except Exception as e:
+                logger.warning(f"Cannot create Domain Index for video {video_id}: Frames view not accessible ({e})")
                 logger.info(f"Domain context will be used for text-based search only")
                 # Still update the domain view to indicate domain context is set
                 domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"

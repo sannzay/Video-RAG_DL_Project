@@ -115,14 +115,14 @@ class VideoSearchEngine:
                 try:
                     results_list = results.collect()
                     for entry in results_list:
-                        retrieval_results.append(
-                            RetrievalResult(
-                                content=entry["transcript_text"],
-                                timestamp=float(entry["start_time_sec"]),
-                                similarity=float(entry["similarity"]),
-                                source=IndexType.AUDIO,
-                            )
+                    retrieval_results.append(
+                        RetrievalResult(
+                            content=entry["transcript_text"],
+                            timestamp=float(entry["start_time_sec"]),
+                            similarity=float(entry["similarity"]),
+                            source=IndexType.AUDIO,
                         )
+                    )
                 except Exception as e:
                     logger.warning(f"Failed to collect similarity results: {e}, falling back to text search")
                     retrieval_results = []
@@ -148,10 +148,10 @@ class VideoSearchEngine:
                         for chunk in limited_chunks[:5]:  # Compute first 5
                             _ = str(chunk.get("transcript_text", ""))
                         # Re-fetch to get computed transcriptions
-                        limited_chunks = audio_view.select(
-                            audio_view.start_time_sec,
-                            audio_view.end_time_sec,
-                            audio_view.transcript_text,
+                limited_chunks = audio_view.select(
+                    audio_view.start_time_sec,
+                    audio_view.end_time_sec,
+                    audio_view.transcript_text,
                         ).limit(10).collect()
 
                 except Exception as e:

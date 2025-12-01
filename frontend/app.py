@@ -713,44 +713,44 @@ def upload_video_section():
                 
                 with st.spinner("📤 Uploading video..."):
                     try:
-                        # Upload video
-                        files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
+                    # Upload video
+                    files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
                         response = requests.post(f"{current_url}/upload-video", files=files, timeout=60)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        video_id = data["video_id"]
                         
-                        if response.status_code == 200:
-                            data = response.json()
-                            video_id = data["video_id"]
-                            
                             st.success(f"✅ Video uploaded successfully!")
-                            
-                            # Start processing
+                        
+                        # Start processing
                             with st.spinner("⚙️ Processing video (creating indexes)..."):
                                 try:
                                     current_url = get_api_base_url()
-                                    process_response = requests.post(
+                            process_response = requests.post(
                                         f"{current_url}/process-video",
                                         json={"video_id": video_id},
                                         timeout=30
-                                    )
-                                    
-                                    if process_response.status_code == 200:
-                                        st.session_state.uploaded_videos[video_id] = {
-                                            "filename": uploaded_file.name,
-                                            "upload_time": datetime.now(),
-                                            "status": "processing",
-                                        }
-                                        st.session_state.active_video_id = video_id
-                                        
+                            )
+                            
+                            if process_response.status_code == 200:
+                                st.session_state.uploaded_videos[video_id] = {
+                                    "filename": uploaded_file.name,
+                                    "upload_time": datetime.now(),
+                                    "status": "processing",
+                                }
+                                st.session_state.active_video_id = video_id
+                                
                                         st.info("🔄 Video is being processed. This may take a few minutes. You can check the status in the sidebar.")
                                         time.sleep(1)
-                                        st.rerun()
-                                    else:
+                                st.rerun()
+                            else:
                                         st.error(f"❌ Failed to start processing: {process_response.status_code}")
                                         if process_response.text:
                                             st.error(f"Error: {process_response.text}")
                                 except requests.exceptions.RequestException as e:
                                     st.error(f"❌ Connection error while processing: {str(e)}")
-                        else:
+                    else:
                             st.error(f"❌ Failed to upload video: Status {response.status_code}")
                             if response.text:
                                 st.error(f"Error: {response.text}")
@@ -847,26 +847,26 @@ def show_video_library():
             </div>
         </div>
         """, unsafe_allow_html=True)
-        
-        # Status badge
-        if status == "completed":
+            
+            # Status badge
+            if status == "completed":
             st.sidebar.markdown(
-                '<span class="status-badge status-completed">✓ Ready</span>',
-                unsafe_allow_html=True
-            )
-        elif status == "processing":
+                    '<span class="status-badge status-completed">✓ Ready</span>',
+                    unsafe_allow_html=True
+                )
+            elif status == "processing":
             st.sidebar.markdown(
-                '<span class="status-badge status-processing">⏳ Processing</span>',
-                unsafe_allow_html=True
-            )
-        else:
+                    '<span class="status-badge status-processing">⏳ Processing</span>',
+                    unsafe_allow_html=True
+                )
+            else:
             st.sidebar.markdown(
-                '<span class="status-badge status-failed">✗ Failed</span>',
-                unsafe_allow_html=True
-            )
-        
-        # Indexes created
-        if indexes:
+                    '<span class="status-badge status-failed">✗ Failed</span>',
+                    unsafe_allow_html=True
+                )
+            
+            # Indexes created
+            if indexes:
             index_names = [idx.value if hasattr(idx, 'value') else str(idx) for idx in indexes]
             st.sidebar.markdown(f"""
             <div style="margin: 0.5rem 0;">
@@ -876,13 +876,13 @@ def show_video_library():
                 </div>
             </div>
             """, unsafe_allow_html=True)
-        
-        # Select button
-        if not is_active and status == "completed":
+            
+            # Select button
+            if not is_active and status == "completed":
             if st.sidebar.button(f"Select Video", key=f"select_{video_id}", use_container_width=True):
-                st.session_state.active_video_id = video_id
-                st.rerun()
-        
+                    st.session_state.active_video_id = video_id
+                    st.rerun()
+            
         st.sidebar.markdown("---")
 
 
@@ -909,30 +909,30 @@ def show_domain_context_panel():
             with col1:
                 if st.button("✅ Update", type="primary", use_container_width=True):
                     if new_context.strip():
-                        st.session_state.domain_context = new_context.strip()
+                st.session_state.domain_context = new_context.strip()
                         st.session_state.domain_context_editing = False
-                        
-                        # Update domain index for active video
-                        if st.session_state.active_video_id:
-                            with st.spinner("Updating domain index..."):
+                
+                # Update domain index for active video
+                if st.session_state.active_video_id:
+                    with st.spinner("Updating domain index..."):
                                 current_url = get_api_base_url()
-                                response = requests.post(
+                        response = requests.post(
                                     f"{current_url}/set-domain-context",
-                                    json={
-                                        "session_id": st.session_state.session_id,
-                                        "video_id": st.session_state.active_video_id,
-                                        "domain_context": st.session_state.domain_context,
-                                    }
-                                )
-                                if response.status_code == 200:
-                                    st.success("✅ Domain context updated!")
-                                else:
-                                    st.error("Failed to update domain context")
+                            json={
+                                "session_id": st.session_state.session_id,
+                                "video_id": st.session_state.active_video_id,
+                                "domain_context": st.session_state.domain_context,
+                            }
+                        )
+                        if response.status_code == 200:
+                            st.success("✅ Domain context updated!")
+                        else:
+                            st.error("Failed to update domain context")
                         st.rerun()
             with col2:
                 if st.button("❌ Cancel", use_container_width=True):
                     st.session_state.domain_context_editing = False
-                    st.rerun()
+                st.rerun()
 
 
 def show_chat_interface():
@@ -985,39 +985,39 @@ def show_chat_interface():
     # Display chat history
     if st.session_state.chat_history:
         st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-        for message in st.session_state.chat_history:
-            if message["role"] == "user":
-                st.markdown(
-                    f'<div class="chat-message user-message">'
+    for message in st.session_state.chat_history:
+        if message["role"] == "user":
+            st.markdown(
+                f'<div class="chat-message user-message">'
                     f'<div class="message-header">You</div>'
                     f'<div class="message-content">{message["content"]}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-            else:
-                st.markdown(
-                    f'<div class="chat-message assistant-message">'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                f'<div class="chat-message assistant-message">'
                     f'<div class="message-header">🤖 QuadRAG Assistant</div>'
                     f'<div class="message-content">{message["content"]}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-                
-                # Show citations if available
-                if "citations" in message and message["citations"]:
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            
+            # Show citations if available
+            if "citations" in message and message["citations"]:
                     with st.expander(f"📎 View Citations ({len(message['citations'])})"):
-                        for i, citation in enumerate(message["citations"], 1):
+                    for i, citation in enumerate(message["citations"], 1):
                             source = citation.get("source", "Unknown").upper()
                             timestamp = citation.get("timestamp", 0)
                             content = citation.get("content", "")[:200]
                             
-                            st.markdown(
-                                f'<div class="citation">'
+                        st.markdown(
+                            f'<div class="citation">'
                                 f'<strong>[{i}]</strong> <span style="color: #667eea; font-weight: 600;">{source}</span> @ {timestamp:.1f}s<br>'
                                 f'{content}...'
-                                f'</div>',
-                                unsafe_allow_html=True
-                            )
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
         st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.markdown("""
@@ -1103,7 +1103,7 @@ def show_chat_interface():
                 st.session_state.chat_history.append({
                     "role": "assistant",
                     "content": "❌ Request timed out. The backend may be slow or unresponsive. Please try again.",
-                })
+                    })
             except Exception as e:
                 st.session_state.chat_history.append({
                     "role": "assistant",
@@ -1135,7 +1135,7 @@ def main():
     # Main content
     col1, col2 = st.columns([2, 1])
     with col1:
-        show_domain_context_panel()
+    show_domain_context_panel()
     with col2:
         show_system_info()
     

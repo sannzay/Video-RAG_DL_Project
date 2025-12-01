@@ -267,10 +267,10 @@ async def upload_video(file: UploadFile = File(...)):
 
             # Always transcode to ensure pixeltable compatibility
             logger.info("Transcoding video to guaranteed compatible format (H.264 Main + AAC)...")
-            transcoded_path = transcode_video(str(file_path))
-            # Replace original with transcoded
-            file_path.unlink()
-            Path(transcoded_path).rename(file_path)
+                transcoded_path = transcode_video(str(file_path))
+                # Replace original with transcoded
+                file_path.unlink()
+                Path(transcoded_path).rename(file_path)
             logger.info("Video transcoded successfully to pixeltable-compatible format")
         except Exception as e:
             logger.error(f"Video transcoding failed: {e}")
@@ -354,11 +354,11 @@ async def _process_video_async(video_id: str):
 
     # Wrap Pixeltable operations in a task to ensure proper async context
     indexes_created_list = []
-
+    
     async def _run_pixeltable_ops():
         """Run Pixeltable operations in a proper async task context."""
         nonlocal indexes_created_list
-
+        
         # Process video (creates table and inserts video)
         logger.info(f"Processing video: {video_path}")
         get_video_processor().process_video(video_id, video_path)
@@ -377,9 +377,9 @@ async def _process_video_async(video_id: str):
 
         # Create Description Index (only if Image Index succeeded, as it depends on resized_frame)
         if IndexType.IMAGE in indexes_created_list:
-            logger.info(f"Creating Description Index for {video_id}")
+        logger.info(f"Creating Description Index for {video_id}")
             if get_indexer_lazy().create_description_index(video_id):
-                indexes_created_list.append(IndexType.DESCRIPTION)
+            indexes_created_list.append(IndexType.DESCRIPTION)
                 logger.info(f"Description Index created successfully for {video_id}")
             else:
                 logger.warning(f"Description Index creation failed for {video_id}")
@@ -431,9 +431,9 @@ async def _process_video_background(video_id: str):
     """
     # Use processing lock to prevent concurrent Pixeltable operations
     async with processing_lock:
-        # Run Pixeltable operations in thread pool to avoid uvloop conflict
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(executor, _process_video_sync, video_id)
+    # Run Pixeltable operations in thread pool to avoid uvloop conflict
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(executor, _process_video_sync, video_id)
 
 
 @app.get("/video/{video_id}/status", response_model=VideoStatusResponse)
@@ -452,7 +452,7 @@ async def get_video_status(video_id: str):
 
         # Get created indexes from our tracking
         indexes_created = video_indexes.get(video_id, [])
-
+        
         # Also verify from registry if available
         video_info = get_video_from_registry(video_id)
         if video_info and not indexes_created:
@@ -622,11 +622,8 @@ async def chat(request: ChatRequest):
         if not get_video_processor().video_exists(request.video_id):
             raise HTTPException(status_code=404, detail="Video not found or not processed")
 
-        # Run search and fusion in thread pool
-        loop = asyncio.get_event_loop()
-        fused_results = await loop.run_in_executor(
-            executor,
-            _search_and_fuse_sync,
+        # Run search and fusion directly in async context (Pixeltable needs same thread)
+        fused_results = await _search_and_fuse_async(
             request.video_id,
             request.session_id,
             request.query,
@@ -660,11 +657,11 @@ async def list_videos():
     """
     try:
         all_videos = get_all_videos()
-
+        
         video_metadata_list = []
         for video_id, video_info in all_videos.items():
             status = processing_status.get(video_id, ProcessingStatus.COMPLETED)
-
+            
             # Get created indexes
             indexes_created = []
             try:
@@ -707,6 +704,50 @@ async def debug_status():
         "processing_errors": processing_errors,
         "registry_videos": list(get_all_videos().keys()) if get_all_videos else []
     }
+
+
+@app.get("/debug/transcriptions/{video_id}")
+async def debug_transcriptions(video_id: str):
+    """Debug endpoint to force computation and return transcriptions."""
+    try:
+        from quadrag.retrieval.search_engine import VideoSearchEngine
+
+        # Initialize search engine
+        VideoSearchEngineClass = get_video_search_engine()
+        search_engine = VideoSearchEngineClass(video_id, None)
+
+        # Force transcription computation and return results
+        if hasattr(search_engine.video_info, 'audio_view') and search_engine.video_info.audio_view:
+            audio_view = search_engine.video_info.audio_view
+            try:
+                # Force computation by collecting all transcriptions
+                chunks = audio_view.select(
+                    audio_view.start_time_sec,
+                    audio_view.end_time_sec,
+                    audio_view.transcript_text,
+                ).collect()
+
+                transcriptions = []
+                for chunk in chunks:
+                    transcriptions.append({
+                        "start_time": float(chunk.get("start_time_sec", 0)),
+                        "end_time": float(chunk.get("end_time_sec", 0)),
+                        "text": str(chunk.get("transcript_text", "")).strip()
+                    })
+
+                return {
+                    "video_id": video_id,
+                    "transcription_count": len(transcriptions),
+                    "transcriptions": transcriptions
+                }
+            except Exception as e:
+                return {"error": f"Failed to collect transcriptions: {e}"}
+        else:
+            return {"error": "No audio view available for this video"}
+
+    except Exception as e:
+        logger.error(f"Debug transcriptions error: {e}")
+        return {"error": str(e)}
 
 
 if __name__ == "__main__":
