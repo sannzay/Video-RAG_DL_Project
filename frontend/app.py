@@ -787,12 +787,19 @@ def show_video_library():
     # Stats
     total_videos = len(st.session_state.uploaded_videos)
     completed = sum(1 for v in st.session_state.uploaded_videos.values() if v.get("status") == "completed")
-    
-    col1, col2 = st.sidebar.columns(2)
+    processing = sum(1 for v in st.session_state.uploaded_videos.values() if v.get("status") == "processing")
+
+    col1, col2, col3 = st.sidebar.columns(3)
     with col1:
         st.metric("Total", total_videos)
     with col2:
         st.metric("Ready", completed)
+    with col3:
+        st.metric("Processing", processing)
+
+    # Manual refresh button for debugging
+    if st.sidebar.button("🔄 Refresh Status", help="Manually refresh video processing status"):
+        st.rerun()
     
     st.sidebar.markdown("---")
     
@@ -805,13 +812,17 @@ def show_video_library():
                 status_data = status_response.json()
                 status = status_data["status"]
                 indexes = status_data.get("indexes_created", [])
+                # Debug logging
+                if status != video_info.get("status"):
+                    st.sidebar.write(f"🔄 Status change for {video_id[:8]}...: {video_info.get('status')} → {status}")
             else:
                 status = video_info.get("status", "unknown")
                 indexes = []
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
             # If connection fails, keep last known status
             status = video_info.get("status", "unknown")
             indexes = []
+            st.sidebar.write(f"⚠️ Status check failed for {video_id[:8]}...: {str(e)}")
         
         # Update status in session state
         old_status = st.session_state.uploaded_videos[video_id].get("status")
@@ -820,6 +831,7 @@ def show_video_library():
 
         # Trigger UI refresh when status changes from processing to completed
         if old_status == "processing" and status == "completed":
+            st.success(f"✅ Video '{video_info['filename']}' processing completed!")
             st.rerun()
         
         # Display video card
