@@ -4,6 +4,8 @@
 [build]
 builder = "NIXPACKS"
 # buildCommand removed - using nixpacks.toml instead
+# Increased timeout for large dependency installation (PyTorch, transformers, etc.)
+buildTimeout = 1800  # 30 minutes
 
 [deploy]
 # startCommand removed - using nixpacks.toml instead

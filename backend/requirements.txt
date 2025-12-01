@@ -24,9 +24,11 @@ moviepy>=2.2.1
 pillow>=11.0.0
 
 # ML/Embeddings
+# Note: PyTorch CPU version is installed separately in nixpacks.toml BEFORE this file
+# to avoid downloading several GB of CUDA libraries. Pip will use the pre-installed CPU version.
+torch>=2.0.0,<2.1.0  # CPU version installed first in nixpacks.toml, pip will skip reinstall
 sentence-transformers>=4.1.0
 transformers>=4.52.4
-torch>=2.0.0
 numpy>=1.24.0
 
 # Async support

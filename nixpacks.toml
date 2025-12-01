@@ -7,7 +7,13 @@ nixPkgs = ["python311", "python311Packages.pip", "python311Packages.setuptools",
 cmds = [
     "cd backend && python3.11 -m venv /app/venv",
     "source /app/venv/bin/activate && cd backend && pip install --upgrade pip setuptools wheel",
-    "source /app/venv/bin/activate && cd backend && pip install -e ."
+    # Install CPU-only PyTorch first to avoid CUDA dependencies (much faster, smaller)
+    # This prevents downloading several GB of CUDA libraries that Railway can't use anyway
+    "source /app/venv/bin/activate && pip install --index-url https://download.pytorch.org/whl/cpu torch>=2.0.0,<2.1.0",
+    # Install all other dependencies from requirements.txt (which now references CPU torch)
+    "source /app/venv/bin/activate && cd backend && pip install -r requirements.txt",
+    # Install the package itself without dependencies (already installed above)
+    "source /app/venv/bin/activate && cd backend && pip install -e . --no-deps"
 ]
 
 [start]
