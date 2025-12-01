@@ -309,6 +309,17 @@ class VideoIndexer:
 
             frames_view = video_info.frames_view
 
+            # Double-check that frames_view actually exists in Pixeltable
+            try:
+                # Try to access the frames_view to ensure it exists
+                test_access = pxt.get_table(frames_view._name)
+            except Exception as e:
+                logger.warning(f"Frames view {frames_view._name} not accessible in Pixeltable: {e}")
+                logger.info(f"Domain context will be used for text-based search only")
+                domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
+                update_domain_view(video_id, domain_view_name)
+                return True
+
             # Create domain-specific caption column
             domain_prompt = settings.DOMAIN_PROMPT_TEMPLATE.format(
                 domain_context=domain_context
