@@ -15,10 +15,10 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8"
     )
 
-    # === API Keys ===
-    GROQ_API_KEY: str
-    OPENAI_API_KEY: str
-    GOOGLE_API_KEY: str
+    # === API Keys (set via environment variables) ===
+    GROQ_API_KEY: str = ""  # Set in Railway environment variables
+    OPENAI_API_KEY: str = ""  # Set in Railway environment variables
+    GOOGLE_API_KEY: str = ""  # Set in Railway environment variables
 
     # === Model Configuration ===
     AUDIO_TRANSCRIPT_MODEL: str = "whisper-1"

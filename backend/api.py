@@ -1,6 +1,7 @@
 """FastAPI backend for QuadRAG."""
 
 import asyncio
+import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -13,8 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from quadrag.config import get_settings
-from quadrag.generation.rag_generator import get_generator
+# Import models first (lightweight)
 from quadrag.models import (
     ChatRequest,
     ChatResponse,
@@ -30,13 +30,8 @@ from quadrag.models import (
     VideoStatusResponse,
     VideoUploadResponse,
 )
-from quadrag.retrieval.fusion import get_fusion
-from quadrag.retrieval.search_engine import VideoSearchEngine
-from quadrag.video.indexer import get_indexer
-from quadrag.video.processor import VideoProcessor
-from quadrag.video.registry import get_all_videos, get_video_from_registry
 
-# Initialize FastAPI app
+# Initialize FastAPI app FIRST (before any heavy imports)
 app = FastAPI(
     title="QuadRAG API",
     description="A Four-Index Multimodal RAG System for Video Understanding",
@@ -46,28 +41,86 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize settings and components
-settings = get_settings()
-video_processor = VideoProcessor()
-indexer = get_indexer()
-fusion = get_fusion()
-generator = get_generator()
-
-# Thread pool executor for Pixeltable operations (avoids uvloop conflict)
+# Thread pool executor for Pixeltable operations
 executor = ThreadPoolExecutor(max_workers=2)
 
 # Track processing status
 processing_status: Dict[str, ProcessingStatus] = {}
 processing_errors: Dict[str, str] = {}
-video_indexes: Dict[str, list[IndexType]] = {}  # Track which indexes were created for each video
+video_indexes: Dict[str, list[IndexType]] = {}
 
-logger.info("QuadRAG API initialized")
+# Lazy-loaded components (initialized on first use)
+_settings = None
+_video_processor = None
+_indexer = None
+_fusion = None
+_generator = None
+_initialized = False
+
+
+def get_settings_lazy():
+    """Lazy load settings."""
+    global _settings
+    if _settings is None:
+        from quadrag.config import get_settings
+        _settings = get_settings()
+    return _settings
+
+
+def get_video_processor():
+    """Lazy load video processor."""
+    global _video_processor
+    if _video_processor is None:
+        from quadrag.video.processor import VideoProcessor
+        _video_processor = VideoProcessor()
+    return _video_processor
+
+
+def get_indexer_lazy():
+    """Lazy load indexer."""
+    global _indexer
+    if _indexer is None:
+        from quadrag.video.indexer import get_indexer
+        _indexer = get_indexer()
+    return _indexer
+
+
+def get_fusion_lazy():
+    """Lazy load fusion."""
+    global _fusion
+    if _fusion is None:
+        from quadrag.retrieval.fusion import get_fusion
+        _fusion = get_fusion()
+    return _fusion
+
+
+def get_generator_lazy():
+    """Lazy load generator."""
+    global _generator
+    if _generator is None:
+        from quadrag.generation.rag_generator import get_generator
+        _generator = get_generator()
+    return _generator
+
+
+# Convenience aliases (will call lazy functions)
+def _get_settings():
+    return get_settings_lazy()
+
+# Make settings available as module-level for compatibility
+class _SettingsProxy:
+    def __getattr__(self, name):
+        return getattr(get_settings_lazy(), name)
+
+settings = _SettingsProxy()
+
+logger.info("QuadRAG API module loaded (components will initialize on first use)")
 
 
 @app.get("/", response_model=HealthResponse)
@@ -171,7 +224,7 @@ async def process_video(request: VideoProcessRequest):
             raise HTTPException(status_code=404, detail="Video not found")
 
         # Check if already processed
-        if video_processor.video_exists(video_id):
+        if get_video_processor().video_exists(video_id):
             return VideoProcessResponse(
                 video_id=video_id,
                 status=ProcessingStatus.COMPLETED,
@@ -223,25 +276,25 @@ async def _process_video_async(video_id: str):
         
         # Process video (creates table and inserts video)
         logger.info(f"Processing video: {video_path}")
-        video_processor.process_video(video_id, video_path)
+        get_video_processor().process_video(video_id, video_path)
 
         # Create Image Index
         logger.info(f"Creating Image Index for {video_id}")
-        if indexer.create_image_index(video_id):
+        if get_indexer_lazy().create_image_index(video_id):
             indexes_created_list.append(IndexType.IMAGE)
         else:
             logger.warning(f"Image Index creation failed for {video_id}")
 
         # Create Audio Index
         logger.info(f"Creating Audio Index for {video_id}")
-        if indexer.create_audio_index(video_id):
+        if get_indexer_lazy().create_audio_index(video_id):
             indexes_created_list.append(IndexType.AUDIO)
         else:
             logger.warning(f"Audio Index creation failed for {video_id}")
 
         # Create Description Index (only if Image Index succeeded, as it depends on resized_frame)
         logger.info(f"Creating Description Index for {video_id}")
-        if IndexType.IMAGE in indexes_created_list and indexer.create_description_index(video_id):
+        if IndexType.IMAGE in indexes_created_list and get_indexer_lazy().create_description_index(video_id):
             indexes_created_list.append(IndexType.DESCRIPTION)
         else:
             logger.warning(f"Description Index creation failed for {video_id}")
@@ -364,7 +417,7 @@ async def set_domain_context(request: DomainContextRequest):
         )
 
         # Check if video exists
-        if not video_processor.video_exists(request.video_id):
+        if not get_video_processor().video_exists(request.video_id):
             raise HTTPException(status_code=404, detail="Video not found")
 
         # Create domain index in thread pool (with new event loop)
@@ -372,7 +425,7 @@ async def set_domain_context(request: DomainContextRequest):
             """Create domain index async function."""
             # Wrap in a task to ensure proper async context
             async def _run_index_creation():
-                return indexer.create_domain_index(video_id, session_id, domain_context)
+                return get_indexer_lazy().create_domain_index(video_id, session_id, domain_context)
             
             task = asyncio.create_task(_run_index_creation())
             return await task
@@ -433,7 +486,7 @@ async def _search_and_fuse_async(video_id: str, session_id: str, query: str, dom
         )
         
         # Fuse results
-        fused_results = fusion.fuse_results(search_results)
+        fused_results = get_fusion_lazy().fuse_results(search_results)
         
         return fused_results
     
@@ -472,7 +525,7 @@ async def chat(request: ChatRequest):
         logger.info(f"Processing chat request for video {request.video_id}")
 
         # Check if video exists
-        if not video_processor.video_exists(request.video_id):
+        if not get_video_processor().video_exists(request.video_id):
             raise HTTPException(status_code=404, detail="Video not found or not processed")
 
         # Run search and fusion in thread pool
@@ -487,7 +540,7 @@ async def chat(request: ChatRequest):
         )
 
         # Generate answer (this doesn't use Pixeltable, so it's fine to run async)
-        response = generator.generate_answer(
+        response = get_generator_lazy().generate_answer(
             query=request.query,
             retrieved_results=fused_results,
             domain_context=request.domain_context,
@@ -557,33 +610,40 @@ if __name__ == "__main__":
     import uvicorn
     
     try:
+        # Get settings (now with defaults, won't crash)
+        _settings = get_settings_lazy()
+        
         # Ensure data directories exist
-        video_dir = settings.get_video_dir()
-        cache_dir = settings.get_cache_dir()
+        video_dir = _settings.get_video_dir()
+        cache_dir = _settings.get_cache_dir()
         video_dir.mkdir(parents=True, exist_ok=True)
         cache_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Data directories ready: {video_dir}, {cache_dir}")
         
-        # Validate API keys are set
-        if not settings.GROQ_API_KEY or settings.GROQ_API_KEY.startswith("your_"):
-            logger.error("GROQ_API_KEY not set or invalid")
-            sys.exit(1)
-        if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("your_"):
-            logger.error("OPENAI_API_KEY not set or invalid")
-            sys.exit(1)
-        if not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY.startswith("your_"):
-            logger.error("GOOGLE_API_KEY not set or invalid")
-            sys.exit(1)
+        # Check API keys (warn but don't exit - let healthcheck pass)
+        missing_keys = []
+        if not _settings.GROQ_API_KEY:
+            missing_keys.append("GROQ_API_KEY")
+        if not _settings.OPENAI_API_KEY:
+            missing_keys.append("OPENAI_API_KEY")
+        if not _settings.GOOGLE_API_KEY:
+            missing_keys.append("GOOGLE_API_KEY")
+        
+        if missing_keys:
+            logger.warning(f"Missing API keys: {missing_keys}. Some features will not work.")
+            logger.warning("Set these in Railway environment variables.")
+        else:
+            logger.info("All API keys configured")
         
         # Use PORT from environment (Railway) or fall back to API_PORT
-        port = int(os.environ.get("PORT", settings.API_PORT))
+        port = int(os.environ.get("PORT", _settings.API_PORT))
+        host = _settings.API_HOST
         
-        logger.info(f"Starting QuadRAG API on {settings.API_HOST}:{port}")
-        logger.info(f"Environment: PORT={port}, API_PORT={settings.API_PORT}")
+        logger.info(f"Starting QuadRAG API on {host}:{port}")
 
         uvicorn.run(
             app,
-            host=settings.API_HOST,
+            host=host,
             port=port,
             log_level="info",
             access_log=True,
