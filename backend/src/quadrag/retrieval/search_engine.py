@@ -133,29 +133,68 @@ class VideoSearchEngine:
                 
                 # Get limited chunks and force computation of transcriptions
                 # This ensures some transcriptions are computed for search
+                limited_chunks = []
                 try:
-                    # First try to get chunks with transcriptions computed
-                    limited_chunks = audio_view.select(
-                        audio_view.start_time_sec,
-                        audio_view.end_time_sec,
-                        audio_view.transcript_text,
-                    ).limit(10).collect()  # Start with fewer chunks to force computation
+                    import asyncio
+
+                    # Use asyncio.run_in_executor to avoid event loop conflicts
+                    def collect_chunks():
+                        try:
+                            # First try to get chunks with transcriptions computed
+                            chunks = audio_view.select(
+                                audio_view.start_time_sec,
+                                audio_view.end_time_sec,
+                                audio_view.transcript_text,
+                            ).limit(10).collect()  # Start with fewer chunks to force computation
+                            return chunks
+                        except Exception as e:
+                            logger.warning(f"Failed to collect audio chunks: {e}")
+                            return []
+
+                    # Run in thread pool to avoid event loop issues
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        limited_chunks = loop.run_until_complete(
+                            asyncio.get_event_loop().run_in_executor(None, collect_chunks)
+                        )
+                    finally:
+                        loop.close()
 
                     # If we got chunks but they have empty transcriptions, try to trigger computation
                     if limited_chunks and any(not str(chunk.get("transcript_text", "")).strip() for chunk in limited_chunks):
                         logger.info("Triggering transcription computation for search...")
                         # Force computation by accessing the transcript_text field
                         for chunk in limited_chunks[:5]:  # Compute first 5
-                            _ = str(chunk.get("transcript_text", ""))
+                            try:
+                                _ = str(chunk.get("transcript_text", ""))
+                            except Exception as e:
+                                logger.debug(f"Failed to compute transcription for chunk: {e}")
+
                         # Re-fetch to get computed transcriptions
-                        limited_chunks = audio_view.select(
-                            audio_view.start_time_sec,
-                            audio_view.end_time_sec,
-                            audio_view.transcript_text,
-                        ).limit(10).collect()
+                        def collect_chunks_again():
+                            try:
+                                chunks = audio_view.select(
+                                    audio_view.start_time_sec,
+                                    audio_view.end_time_sec,
+                                    audio_view.transcript_text,
+                                ).limit(10).collect()
+                                return chunks
+                            except Exception as e:
+                                logger.warning(f"Failed to re-collect audio chunks: {e}")
+                                return limited_chunks  # Return original chunks if re-collection fails
+
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            limited_chunks = loop.run_until_complete(
+                                asyncio.get_event_loop().run_in_executor(None, collect_chunks_again)
+                            )
+                        finally:
+                            loop.close()
 
                 except Exception as e:
-                    logger.warning(f"Failed to collect audio chunks: {e}")
+                    logger.warning(f"Failed to collect audio chunks with executor: {e}")
                     limited_chunks = []
                 
                 # Simple text matching (case-insensitive)
@@ -222,6 +261,15 @@ class VideoSearchEngine:
                 logger.info("Description Index not available (requires image index)")
                 return []
 
+            # Additional check: ensure frames_view actually exists in Pixeltable
+            try:
+                frames_view = self.video_info.frames_view
+                # Try to access a property to verify the view exists
+                _ = frames_view._name
+            except Exception as e:
+                logger.warning(f"Description Index not accessible: {e}")
+                return []
+
             frames_view = self.video_info.frames_view
 
             # Perform similarity search on descriptions
@@ -278,7 +326,14 @@ class VideoSearchEngine:
                 logger.info("Domain Index not available (requires image index)")
                 return []
 
-            frames_view = self.video_info.frames_view
+            # Additional check: ensure frames_view actually exists in Pixeltable
+            try:
+                frames_view = self.video_info.frames_view
+                # Try to access a property to verify the view exists
+                _ = frames_view._name
+            except Exception as e:
+                logger.warning(f"Domain Index not accessible: {e}")
+                return []
             
             # Get the domain caption column for this session
             column_name = f"domain_caption_{self.session_id[:8]}"
