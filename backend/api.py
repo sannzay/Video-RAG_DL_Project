@@ -248,19 +248,23 @@ async def upload_video(file: UploadFile = File(...)):
         except Exception as e:
             logger.warning(f"Could not clear extended attributes: {e}")
         
-        # Validate and transcode video if needed
+        # Always transcode video to ensure compatibility with pixeltable/ffmpeg
         from quadrag.utils import validate_video_format, transcode_video
         try:
-            if not validate_video_format(str(file_path)):
-                logger.warning("Video format not compatible, transcoding...")
-                transcoded_path = transcode_video(str(file_path))
-                # Replace original with transcoded
-                file_path.unlink()
-                Path(transcoded_path).rename(file_path)
-                logger.info("Video transcoded successfully")
+            # Validate first for logging
+            is_valid = validate_video_format(str(file_path))
+            logger.info(f"Video validation result: {'PASSED' if is_valid else 'FAILED'}")
+
+            # Always transcode to ensure pixeltable compatibility
+            logger.info("Transcoding video to guaranteed compatible format (H.264 Main + AAC)...")
+            transcoded_path = transcode_video(str(file_path))
+            # Replace original with transcoded
+            file_path.unlink()
+            Path(transcoded_path).rename(file_path)
+            logger.info("Video transcoded successfully to pixeltable-compatible format")
         except Exception as e:
-            logger.error(f"Video validation/transcoding failed: {e}")
-            # Continue anyway - might still work
+            logger.error(f"Video transcoding failed: {e}")
+            raise HTTPException(status_code=400, detail=f"Video processing failed: {str(e)}")
 
         processing_status[video_id] = ProcessingStatus.PENDING
 
