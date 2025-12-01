@@ -1,12 +1,15 @@
 # Nixpacks configuration for Railway deployment
 
 [phases.setup]
-nixPkgs = ["python311", "python311Packages.pip", "python311Packages.setuptools", "python311Packages.wheel", "ffmpeg", "postgresql"]
+# Added stdenv.cc.cc.lib for libstdc++.so.6 required by PyTorch and other native extensions
+nixPkgs = ["python311", "python311Packages.pip", "python311Packages.setuptools", "python311Packages.wheel", "ffmpeg", "postgresql", "stdenv.cc.cc.lib", "zlib", "libz"]
 
 [phases.install]
 cmds = [
     "cd backend && python3.11 -m venv /app/venv",
     "source /app/venv/bin/activate && pip install --upgrade pip setuptools wheel",
+    # Find libstdc++ and save the path for runtime
+    "LIBSTDCPP_DIR=$(dirname $(find /nix -name 'libstdc++.so.6' 2>/dev/null | head -1)) && echo $LIBSTDCPP_DIR > /app/libstdcpp_path.txt && echo 'Found libstdc++ at:' $LIBSTDCPP_DIR",
     # Install numpy FIRST with a stable version to avoid conflicts
     "source /app/venv/bin/activate && pip install 'numpy>=1.24.0,<2.0.0'",
     # Install CPU-only PyTorch (smaller, faster than CUDA version)
@@ -16,8 +19,13 @@ cmds = [
     # Install the package itself without dependencies (already installed above)
     "source /app/venv/bin/activate && cd backend && pip install -e . --no-deps",
     # Force reinstall numpy to ensure it's properly installed (fixes source directory issue)
-    "source /app/venv/bin/activate && pip install --force-reinstall --no-deps 'numpy>=1.24.0,<2.0.0'"
+    "source /app/venv/bin/activate && pip install --force-reinstall --no-deps 'numpy>=1.24.0,<2.0.0'",
+    # Copy libstdc++ to /app/lib for runtime access (symlinks don't persist well)
+    "mkdir -p /app/lib && LIBSTDCPP=$(find /nix -name 'libstdc++.so.6' 2>/dev/null | head -1) && if [ -n \"$LIBSTDCPP\" ]; then cp -L \"$LIBSTDCPP\" /app/lib/libstdc++.so.6; fi",
+    # Also copy libz if needed
+    "LIBZ=$(find /nix -name 'libz.so.1' 2>/dev/null | head -1) && if [ -n \"$LIBZ\" ]; then cp -L \"$LIBZ\" /app/lib/libz.so.1 2>/dev/null || true; fi"
 ]
 
 [start]
-cmd = "source /app/venv/bin/activate && cd backend && python api.py"
+# Set LD_LIBRARY_PATH to include copied libraries
+cmd = "export LD_LIBRARY_PATH=/app/lib:/nix/var/nix/profiles/default/lib:$LD_LIBRARY_PATH && source /app/venv/bin/activate && cd backend && python api.py"
