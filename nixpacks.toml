@@ -27,6 +27,10 @@ cmds = [
     "source /app/venv/bin/activate && pip install --force-reinstall --no-deps 'numpy>=1.24.0,<2.0.0'",
     # Find libstdc++ from nix (stdenv.cc.cc.lib) - compatible with nix Python
     "echo '=== Finding libstdc++ ===' && LIBSTDCPP='' && if [ -f '/nix/var/nix/profiles/default/lib/libstdc++.so.6' ]; then LIBSTDCPP='/nix/var/nix/profiles/default/lib/libstdc++.so.6'; else LIBSTDCPP=$(find /nix/store -name 'libstdc++.so.6' -path '*/lib/*' 2>/dev/null | head -1); fi && if [ -n \"$LIBSTDCPP\" ] && [ -f \"$LIBSTDCPP\" ]; then LIBDIR=$(dirname \"$LIBSTDCPP\") && echo \"Found libstdc++ at: $LIBDIR (from $LIBSTDCPP)\" && echo \"$LIBDIR\" > /app/libstdcpp_dir.txt; else echo 'ERROR: No nix libstdc++.so.6 found!' && exit 1; fi",
+    # Test ffmpeg availability and functionality
+    "echo '=== Testing ffmpeg ===' && ffmpeg -version | head -3 && echo 'FFmpeg OK' || echo 'FFmpeg failed'",
+    # Test basic video processing
+    "echo '=== Testing video processing ===' && python -c 'import subprocess; result = subprocess.run([\"ffmpeg\", \"-i\", \"/dev/null\"], capture_output=True, text=True); print(f\"FFmpeg exit code: {result.returncode}\")' 2>/dev/null || echo 'FFmpeg test completed'",
     # Verify the saved path actually has the file
     "LIBDIR=$(cat /app/libstdcpp_dir.txt) && if [ -f \"$LIBDIR/libstdc++.so.6\" ]; then echo \"Verified: $LIBDIR/libstdc++.so.6 exists and is executable: $(ls -la \"$LIBDIR/libstdc++.so.6\")\"; else echo \"FATAL: $LIBDIR/libstdc++.so.6 does NOT exist\" && exit 1; fi",
     # Find torch installation directory (before trying to import torch)

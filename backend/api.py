@@ -141,6 +141,18 @@ def get_video_processor():
     return _video_processor
 
 
+def get_video_from_registry(video_id: str):
+    """Lazy load get_video_from_registry function."""
+    from quadrag.video.registry import get_video_from_registry
+    return get_video_from_registry(video_id)
+
+
+def get_all_videos():
+    """Lazy load get_all_videos function."""
+    from quadrag.video.registry import get_all_videos
+    return get_all_videos()
+
+
 def get_indexer_lazy():
     """Lazy load indexer."""
     global _indexer
