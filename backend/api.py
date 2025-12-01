@@ -321,9 +321,33 @@ def _process_video_sync(video_id: str):
     Args:
         video_id: Video identifier
     """
-    # Use asyncio.run() which properly sets up the event loop and task context
-    # This ensures Pixeltable's internal async operations have proper task context
+    # Ensure we're in a safe working directory to avoid numpy import issues
+    # The error "you should not try to import numpy from its source directory"
+    # occurs when the current working directory contains numpy source code
+    original_cwd = os.getcwd()
+    
+    # Use /app as working directory in Railway, or backend directory locally
+    # This ensures we're not in any directory that might contain numpy source
+    if os.path.exists("/app"):
+        safe_dir = "/app"
+    else:
+        safe_dir = Path(__file__).parent.absolute()
+    
     try:
+        # Change to safe directory before importing heavy dependencies
+        os.chdir(safe_dir)
+        logger.info(f"Changed working directory to: {safe_dir} (original: {original_cwd})")
+        
+        # Import numpy early to ensure it's loaded from the installed package, not source
+        # This prevents the "source directory" error
+        try:
+            import numpy
+            logger.debug(f"NumPy imported successfully from: {numpy.__file__}")
+        except ImportError as e:
+            logger.warning(f"NumPy import check failed: {e}")
+        
+        # Use asyncio.run() which properly sets up the event loop and task context
+        # This ensures Pixeltable's internal async operations have proper task context
         asyncio.run(_process_video_async(video_id))
     except Exception as e:
         logger.error(f"Error processing video {video_id}: {e}")
@@ -331,6 +355,12 @@ def _process_video_sync(video_id: str):
         logger.error(traceback.format_exc())
         processing_status[video_id] = ProcessingStatus.FAILED
         processing_errors[video_id] = str(e)
+    finally:
+        # Restore original working directory
+        try:
+            os.chdir(original_cwd)
+        except:
+            pass
 
 
 async def _process_video_background(video_id: str):
