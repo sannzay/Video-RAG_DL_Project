@@ -27,10 +27,11 @@ pillow>=11.0.0
 # Note: numpy and PyTorch CPU versions are installed separately in nixpacks.toml BEFORE this file
 # to avoid downloading several GB of CUDA libraries. Pip will use the pre-installed versions.
 # Using numpy 1.x for stability (numpy 2.x has compatibility issues)
+# PyTorch 2.1.x compatible versions
 numpy>=1.24.0,<2.0.0
 torch>=2.1.0,<2.2.0
-sentence-transformers>=4.1.0
-transformers>=4.52.4
+sentence-transformers>=2.2.0,<3.0.0
+transformers>=4.21.0,<4.45.0
 
 # Async support
 nest-asyncio>=1.6.0

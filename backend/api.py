@@ -114,6 +114,9 @@ processing_status: Dict[str, ProcessingStatus] = {}
 processing_errors: Dict[str, str] = {}
 video_indexes: Dict[str, list[IndexType]] = {}
 
+# Processing lock to prevent concurrent Pixeltable operations
+processing_lock = asyncio.Lock()
+
 # Lazy-loaded components (initialized on first use)
 _settings = None
 _video_processor = None
@@ -344,35 +347,37 @@ async def _process_video_async(video_id: str):
 
     # Wrap Pixeltable operations in a task to ensure proper async context
     indexes_created_list = []
-    
+
     async def _run_pixeltable_ops():
         """Run Pixeltable operations in a proper async task context."""
         nonlocal indexes_created_list
-        
+
         # Process video (creates table and inserts video)
         logger.info(f"Processing video: {video_path}")
         get_video_processor().process_video(video_id, video_path)
 
-        # Create Image Index
-        logger.info(f"Creating Image Index for {video_id}")
-        if get_indexer_lazy().create_image_index(video_id):
-            indexes_created_list.append(IndexType.IMAGE)
-        else:
-            logger.warning(f"Image Index creation failed for {video_id}")
-
-        # Create Audio Index
+        # Create Audio Index (prioritize this over image index due to PyTorch compatibility issues)
         logger.info(f"Creating Audio Index for {video_id}")
         if get_indexer_lazy().create_audio_index(video_id):
             indexes_created_list.append(IndexType.AUDIO)
+            logger.info(f"Audio Index created successfully for {video_id}")
         else:
             logger.warning(f"Audio Index creation failed for {video_id}")
 
+        # Skip Image Index for now due to PyTorch/transformers compatibility issues
+        logger.info(f"Skipping Image Index creation (PyTorch 2.1 compatibility issue)")
+        # TODO: Re-enable when PyTorch/transformers versions are properly aligned
+
         # Create Description Index (only if Image Index succeeded, as it depends on resized_frame)
-        logger.info(f"Creating Description Index for {video_id}")
-        if IndexType.IMAGE in indexes_created_list and get_indexer_lazy().create_description_index(video_id):
-            indexes_created_list.append(IndexType.DESCRIPTION)
+        if IndexType.IMAGE in indexes_created_list:
+            logger.info(f"Creating Description Index for {video_id}")
+            if get_indexer_lazy().create_description_index(video_id):
+                indexes_created_list.append(IndexType.DESCRIPTION)
+                logger.info(f"Description Index created successfully for {video_id}")
+            else:
+                logger.warning(f"Description Index creation failed for {video_id}")
         else:
-            logger.warning(f"Description Index creation failed for {video_id}")
+            logger.info(f"Skipping Description Index (requires Image Index)")
 
     # Run Pixeltable operations as a task to ensure proper context
     task = asyncio.create_task(_run_pixeltable_ops())
@@ -417,9 +422,11 @@ async def _process_video_background(video_id: str):
     Args:
         video_id: Video identifier
     """
-    # Run Pixeltable operations in thread pool to avoid uvloop conflict
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(executor, _process_video_sync, video_id)
+    # Use processing lock to prevent concurrent Pixeltable operations
+    async with processing_lock:
+        # Run Pixeltable operations in thread pool to avoid uvloop conflict
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(executor, _process_video_sync, video_id)
 
 
 @app.get("/video/{video_id}/status", response_model=VideoStatusResponse)
