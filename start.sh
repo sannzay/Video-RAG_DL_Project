@@ -1,6 +1,9 @@
-#!/bin/bash
-
+#!/bin/sh
 # Railway startup script for QuadRAG
+echo "=== STARTUP SCRIPT EXECUTING ==="
+pwd
+whoami
+ls -la /app/ | head -5
 set -x  # Enable command tracing
 
 # Set up environment variables with fallbacks
@@ -19,7 +22,11 @@ echo "=== Backend Directory ==="
 ls -la /app/backend/ 2>/dev/null || echo 'No backend directory found!'
 
 echo "=== Activating Virtual Environment ==="
-source /app/venv/bin/activate 2>/dev/null && echo 'Virtualenv activated successfully' || (echo 'Virtualenv activation failed!' && exit 1)
+if [ -f "/app/venv/bin/activate" ]; then
+    source /app/venv/bin/activate 2>/dev/null && echo 'Virtualenv activated successfully' || (echo 'Virtualenv activation failed!' && exit 1)
+else
+    echo 'Virtualenv activate script not found!' && exit 1
+fi
 
 echo "=== Changing to Backend Directory ==="
 cd backend 2>/dev/null && echo 'Changed to backend directory' || (echo 'Failed to cd to backend!' && exit 1)
