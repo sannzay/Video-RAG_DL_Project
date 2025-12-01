@@ -10,7 +10,9 @@ export LD_LIBRARY_PATH=$LIBDIR:$TORCH_LIB:/nix/var/nix/profiles/default/lib:/usr
 
 echo "=== QuadRAG Startup Debug ==="
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
-echo "PORT=${PORT:-8080}"
+echo "PORT environment variable: ${PORT:-NOT_SET}"
+echo "Defaulting PORT to: ${PORT:-8080}"
+echo "DATABASE_URL: ${DATABASE_URL:-NOT_SET}"
 echo "PWD=$(pwd)"
 
 echo "=== Directory Contents ==="
@@ -33,6 +35,17 @@ python -c 'import sys; sys.path.insert(0, "."); print("Importing api.py..."); im
 echo "=== Testing FastAPI App Creation ==="
 python -c 'import sys; sys.path.insert(0, "."); import api; print(f"FastAPI app created: {api.app.title}")' 2>&1 || (echo 'FastAPI app creation failed!' && exit 1)
 
+echo "=== Testing Pixeltable Import (without database) ==="
+python -c 'import pixeltable as pxt; print(f"Pixeltable imported: {pxt.__version__}")' 2>&1 || (echo 'Pixeltable import failed - this might be expected' && true)
+
+echo "=== Checking Pixeltable Home ==="
+python -c 'import os; print(f"PIXELTABLE_HOME: {os.environ.get(\"PIXELTABLE_HOME\", \"NOT_SET\")}")' 2>&1
+
 echo "=== Launching FastAPI Application ==="
 # Don't use exec so we can see if the startup fails
-python api.py 2>&1
+if python api.py 2>&1; then
+    echo "FastAPI application exited successfully"
+else
+    echo "FastAPI application failed with exit code $?"
+    exit 1
+fi
