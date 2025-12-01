@@ -123,6 +123,7 @@ _video_processor = None
 _indexer = None
 _fusion = None
 _generator = None
+_search_engine = None
 _initialized = False
 
 
@@ -154,6 +155,12 @@ def get_all_videos():
     """Lazy load get_all_videos function."""
     from quadrag.video.registry import get_all_videos
     return get_all_videos()
+
+
+def get_video_search_engine():
+    """Lazy load VideoSearchEngine class."""
+    from quadrag.retrieval.search_engine import VideoSearchEngine
+    return VideoSearchEngine
 
 
 def get_indexer_lazy():
@@ -563,7 +570,8 @@ async def _search_and_fuse_async(video_id: str, session_id: str, query: str, dom
     # Wrap Pixeltable operations in a task to ensure proper async context
     async def _run_search_ops():
         # Initialize search engine
-        search_engine = VideoSearchEngine(video_id, session_id)
+        VideoSearchEngineClass = get_video_search_engine()
+        search_engine = VideoSearchEngineClass(video_id, session_id)
         
         # Search all indexes
         search_results = search_engine.search_all_indexes(

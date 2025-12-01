@@ -279,6 +279,15 @@ class VideoIndexer:
             if not video_info:
                 raise ValueError(f"Video {video_id} not found in registry")
 
+            # Check if frames_view exists (requires image index)
+            if not video_info.frames_view:
+                logger.warning(f"Cannot create Domain Index for video {video_id}: Image index not available")
+                logger.info(f"Domain context will be used for text-based search only")
+                # Still update the domain view to indicate domain context is set
+                domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
+                update_domain_view(video_id, domain_view_name)
+                return True
+
             frames_view = video_info.frames_view
 
             # Create domain-specific caption column
