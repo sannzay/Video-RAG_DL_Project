@@ -44,5 +44,5 @@ cmds = [
 ]
 
 [start]
-# Set LD_LIBRARY_PATH with nix libstdc++ and torch lib - compatible environment
-cmd = "set -x; LIBDIR=$(cat /app/libstdcpp_dir.txt 2>/dev/null || echo '/nix/var/nix/profiles/default/lib'); TORCH_LIB=$(cat /app/torch_dir.txt 2>/dev/null || echo '')/lib; export LD_LIBRARY_PATH=$LIBDIR:$TORCH_LIB:/nix/var/nix/profiles/default/lib:/usr/lib:$LD_LIBRARY_PATH; echo \"LD_LIBRARY_PATH=$LD_LIBRARY_PATH\"; echo \"PORT=${PORT:-8080}\"; echo \"PWD=$(pwd)\"; ls -la /app/; ls -la /app/backend/ 2>/dev/null || echo 'No backend dir'; source /app/venv/bin/activate 2>/dev/null && echo 'Virtualenv activated' || echo 'Virtualenv activation failed'; cd backend 2>/dev/null && echo 'Changed to backend dir' || echo 'Failed to cd to backend'; echo 'Testing basic import...'; python -c 'import sys; print(sys.path[:3]); import numpy as np; print(f\"NumPy OK: {np.__version__}\"); import torch; print(f\"Torch OK: {torch.__version__}\")' 2>&1; echo 'Testing api.py import...'; python -c 'import sys; sys.path.insert(0, \".\"); print(\"Importing api.py...\"); import api; print(\"api.py imported successfully\")' 2>&1; echo 'Launching app...'; exec python api.py 2>&1"
+# Simple startup command to test if container starts at all
+cmd = "echo 'Container started successfully'; echo \"PORT=${PORT:-8080}\"; echo \"PWD=$(pwd)\"; ls -la /app/ | head -10; echo 'Test completed'"
