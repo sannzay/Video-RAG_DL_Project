@@ -267,10 +267,10 @@ async def upload_video(file: UploadFile = File(...)):
 
             # Always transcode to ensure pixeltable compatibility
             logger.info("Transcoding video to guaranteed compatible format (H.264 Main + AAC)...")
-                transcoded_path = transcode_video(str(file_path))
-                # Replace original with transcoded
-                file_path.unlink()
-                Path(transcoded_path).rename(file_path)
+            transcoded_path = transcode_video(str(file_path))
+            # Replace original with transcoded
+            file_path.unlink()
+            Path(transcoded_path).rename(file_path)
             logger.info("Video transcoded successfully to pixeltable-compatible format")
         except Exception as e:
             logger.error(f"Video transcoding failed: {e}")
