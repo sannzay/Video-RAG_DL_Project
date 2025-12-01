@@ -114,16 +114,20 @@ def transcode_video(input_path: str, output_path: Optional[str] = None) -> str:
     try:
         logger.info(f"Transcoding video from {input_path} to {output_path}")
         
-        # Transcode to H.264 Main profile with AAC audio
+        # Transcode to H.264 Main profile with AAC audio - pixeltable compatible
         # -movflags +faststart for web streaming compatibility
+        # -pix_fmt yuv420p for maximum compatibility
+        # -b:a 128k for standard audio bitrate
         result = subprocess.run(
             [
                 "ffmpeg",
                 "-i", input_path,
                 "-c:v", "libx264",
-                "-profile:v", "main",  # Force Main profile
+                "-profile:v", "main",  # Force Main profile for pixeltable
                 "-preset", "fast",
+                "-pix_fmt", "yuv420p",  # Standard pixel format
                 "-c:a", "aac",
+                "-b:a", "128k",  # Standard audio bitrate
                 "-strict", "experimental",
                 "-movflags", "+faststart",
                 "-y",  # Overwrite output
@@ -133,6 +137,14 @@ def transcode_video(input_path: str, output_path: Optional[str] = None) -> str:
             text=True,
             check=True
         )
+
+        # Validate the transcoded file
+        if not Path(output_path).exists():
+            raise RuntimeError(f"Transcoded file not created: {output_path}")
+
+        file_size = Path(output_path).stat().st_size
+        if file_size == 0:
+            raise RuntimeError(f"Transcoded file is empty: {output_path}")
         
         logger.info(f"Successfully transcoded video to {output_path}")
         return output_path
