@@ -17,8 +17,8 @@ cmds = [
     "source /app/venv/bin/activate && pip install --upgrade pip setuptools wheel",
     # Install numpy FIRST with a stable version to avoid conflicts
     "source /app/venv/bin/activate && pip install 'numpy>=1.24.0,<2.0.0'",
-    # Install CPU-only PyTorch - use extra-index-url to prefer CPU version
-    "source /app/venv/bin/activate && pip install 'torch>=2.0.0,<2.1.0' --extra-index-url https://download.pytorch.org/whl/cpu",
+    # Install CPU-only PyTorch - need >= 2.1 for CLIP models
+    "source /app/venv/bin/activate && pip install 'torch>=2.1.0,<2.2.0' --extra-index-url https://download.pytorch.org/whl/cpu",
     # Install all other dependencies from requirements.txt
     "source /app/venv/bin/activate && cd backend && pip install -r requirements.txt",
     # Install the package itself without dependencies (already installed above)

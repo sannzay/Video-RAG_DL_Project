@@ -814,7 +814,13 @@ def show_video_library():
             indexes = []
         
         # Update status in session state
+        old_status = st.session_state.uploaded_videos[video_id].get("status")
         st.session_state.uploaded_videos[video_id]["status"] = status
+        st.session_state.uploaded_videos[video_id]["indexes"] = indexes
+
+        # Trigger UI refresh when status changes from processing to completed
+        if old_status == "processing" and status == "completed":
+            st.rerun()
         
         # Display video card
         is_active = video_id == st.session_state.active_video_id
