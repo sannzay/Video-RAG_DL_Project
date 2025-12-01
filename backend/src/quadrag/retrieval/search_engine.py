@@ -131,14 +131,29 @@ class VideoSearchEngine:
                 # Limit to first 50 chunks to avoid blocking on all transcriptions
                 logger.warning(f"Embedding index not available, using text search on limited chunks: {e}")
                 
-                # Get limited chunks (first 50) to avoid computing all transcriptions
-                # This allows search to work even if transcriptions aren't all computed yet
+                # Get limited chunks and force computation of transcriptions
+                # This ensures some transcriptions are computed for search
                 try:
+                    # First try to get chunks with transcriptions computed
                     limited_chunks = audio_view.select(
                         audio_view.start_time_sec,
                         audio_view.end_time_sec,
                         audio_view.transcript_text,
-                    ).limit(50).collect()  # Limit to 50 chunks for faster search
+                    ).limit(10).collect()  # Start with fewer chunks to force computation
+
+                    # If we got chunks but they have empty transcriptions, try to trigger computation
+                    if limited_chunks and any(not str(chunk.get("transcript_text", "")).strip() for chunk in limited_chunks):
+                        logger.info("Triggering transcription computation for search...")
+                        # Force computation by accessing the transcript_text field
+                        for chunk in limited_chunks[:5]:  # Compute first 5
+                            _ = str(chunk.get("transcript_text", ""))
+                        # Re-fetch to get computed transcriptions
+                        limited_chunks = audio_view.select(
+                            audio_view.start_time_sec,
+                            audio_view.end_time_sec,
+                            audio_view.transcript_text,
+                        ).limit(10).collect()
+
                 except Exception as e:
                     logger.warning(f"Failed to collect audio chunks: {e}")
                     limited_chunks = []
@@ -147,11 +162,20 @@ class VideoSearchEngine:
                 query_lower = query_text.lower()
                 scored_chunks = []
                 for chunk in limited_chunks:
-                    text = str(chunk.get("transcript_text", "")).lower()
-                    if query_lower in text or any(word in text for word in query_lower.split()):
+                    text = str(chunk.get("transcript_text", "")).lower().strip()
+                    if not text:
+                        continue  # Skip empty transcriptions
+
+                    # Check if query is contained in text or individual words match
+                    contains_query = query_lower in text
+                    word_matches = any(word in text for word in query_lower.split() if len(word) > 2)  # Only match words > 2 chars
+
+                    if contains_query or word_matches:
                         # Simple score based on how many query words match
-                        score = sum(1 for word in query_lower.split() if word in text) / max(len(query_lower.split()), 1)
+                        matching_words = sum(1 for word in query_lower.split() if word in text)
+                        score = matching_words / max(len(query_lower.split()), 1)
                         scored_chunks.append((chunk, score))
+                        logger.debug(f"Match found in chunk {chunk.get('start_time_sec', 0)}: '{text[:100]}...' (score: {score})")
                 
                 # Sort by score and take top_k
                 scored_chunks.sort(key=lambda x: x[1], reverse=True)
