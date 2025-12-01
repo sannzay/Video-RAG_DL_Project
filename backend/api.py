@@ -431,9 +431,9 @@ async def _process_video_background(video_id: str):
     """
     # Use processing lock to prevent concurrent Pixeltable operations
     async with processing_lock:
-    # Run Pixeltable operations in thread pool to avoid uvloop conflict
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(executor, _process_video_sync, video_id)
+        # Run Pixeltable operations in thread pool to avoid uvloop conflict
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(executor, _process_video_sync, video_id)
 
 
 @app.get("/video/{video_id}/status", response_model=VideoStatusResponse)
