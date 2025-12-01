@@ -2,7 +2,8 @@
 
 [phases.setup]
 # Added stdenv.cc.cc.lib for libstdc++.so.6 required by PyTorch and other native extensions
-nixPkgs = ["python311", "python311Packages.pip", "python311Packages.setuptools", "python311Packages.wheel", "ffmpeg", "postgresql", "stdenv.cc.cc.lib", "zlib", "libz"]
+# Note: Only include zlib (not libz) to avoid package collision
+nixPkgs = ["python311", "python311Packages.pip", "python311Packages.setuptools", "python311Packages.wheel", "ffmpeg", "postgresql", "stdenv.cc.cc.lib", "zlib"]
 
 [phases.install]
 cmds = [
