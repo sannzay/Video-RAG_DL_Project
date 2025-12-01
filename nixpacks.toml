@@ -1,25 +1,31 @@
 # Nixpacks configuration for Railway deployment
 
 [phases.setup]
-# Core packages - ffmpeg and postgresql from nix, gcc for C++ runtime
-nixPkgs = ["python311", "python311Packages.pip", "python311Packages.setuptools", "python311Packages.wheel", "ffmpeg", "postgresql", "gcc", "zlib"]
+# Core packages
+nixPkgs = ["python311", "python311Packages.pip", "python311Packages.setuptools", "python311Packages.wheel", "ffmpeg", "postgresql", "zlib"]
+# Install libstdc++ from apt (Ubuntu) which is compatible with container's glibc
+aptPkgs = ["libstdc++6"]
 
 [phases.install]
 cmds = [
+    # Check available libstdc++ locations
+    "echo '=== Checking libstdc++ locations ===' && find /usr -name 'libstdc++*' 2>/dev/null | head -10 && find /lib -name 'libstdc++*' 2>/dev/null | head -5",
     "cd backend && python3.11 -m venv /app/venv",
     "source /app/venv/bin/activate && pip install --upgrade pip setuptools wheel",
     # Install numpy FIRST with a stable version to avoid conflicts
     "source /app/venv/bin/activate && pip install 'numpy>=1.24.0,<2.0.0'",
-    # Install CPU-only PyTorch (smaller, faster than CUDA version)
-    "source /app/venv/bin/activate && pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.0.0,<2.1.0'",
+    # Install CPU-only PyTorch - use extra-index-url to prefer CPU version
+    "source /app/venv/bin/activate && pip install 'torch>=2.0.0,<2.1.0' --extra-index-url https://download.pytorch.org/whl/cpu",
     # Install all other dependencies from requirements.txt
     "source /app/venv/bin/activate && cd backend && pip install -r requirements.txt",
     # Install the package itself without dependencies (already installed above)
     "source /app/venv/bin/activate && cd backend && pip install -e . --no-deps",
     # Force reinstall numpy to ensure it's properly installed (fixes source directory issue)
-    "source /app/venv/bin/activate && pip install --force-reinstall --no-deps 'numpy>=1.24.0,<2.0.0'"
+    "source /app/venv/bin/activate && pip install --force-reinstall --no-deps 'numpy>=1.24.0,<2.0.0'",
+    # Test torch import with Ubuntu's libstdc++
+    "source /app/venv/bin/activate && export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH && python -c 'import torch; print(f\"Torch {torch.__version__} import OK\")' && echo 'SUCCESS' || echo 'FAILED'"
 ]
 
 [start]
-# Use nix profile lib path directly (don't copy libs to avoid GLIBC version mismatch)
-cmd = "source /app/venv/bin/activate && cd backend && python api.py"
+# Use Ubuntu's libstdc++ which is compatible with container's glibc
+cmd = "export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH && echo \"LD_LIBRARY_PATH=$LD_LIBRARY_PATH\" && source /app/venv/bin/activate && cd backend && python api.py"
