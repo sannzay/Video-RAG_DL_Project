@@ -110,17 +110,22 @@ class VideoSearchEngine:
                     similarity=sims,
                 ).order_by(sims, asc=False).limit(top_k)
                 
-                # Convert to RetrievalResult
+                # Convert to RetrievalResult - collect() can cause event loop issues
                 retrieval_results = []
-                for entry in results.collect():
-                    retrieval_results.append(
-                        RetrievalResult(
-                            content=entry["transcript_text"],
-                            timestamp=float(entry["start_time_sec"]),
-                            similarity=float(entry["similarity"]),
-                            source=IndexType.AUDIO,
+                try:
+                    results_list = results.collect()
+                    for entry in results_list:
+                        retrieval_results.append(
+                            RetrievalResult(
+                                content=entry["transcript_text"],
+                                timestamp=float(entry["start_time_sec"]),
+                                similarity=float(entry["similarity"]),
+                                source=IndexType.AUDIO,
+                            )
                         )
-                    )
+                except Exception as e:
+                    logger.warning(f"Failed to collect similarity results: {e}, falling back to text search")
+                    retrieval_results = []
             except (AttributeError, Exception) as e:
                 # If embedding index doesn't exist, use text-based search
                 # Limit to first 50 chunks to avoid blocking on all transcriptions
@@ -128,11 +133,15 @@ class VideoSearchEngine:
                 
                 # Get limited chunks (first 50) to avoid computing all transcriptions
                 # This allows search to work even if transcriptions aren't all computed yet
-                limited_chunks = audio_view.select(
-                    audio_view.start_time_sec,
-                    audio_view.end_time_sec,
-                    audio_view.transcript_text,
-                ).limit(50).collect()  # Limit to 50 chunks for faster search
+                try:
+                    limited_chunks = audio_view.select(
+                        audio_view.start_time_sec,
+                        audio_view.end_time_sec,
+                        audio_view.transcript_text,
+                    ).limit(50).collect()  # Limit to 50 chunks for faster search
+                except Exception as e:
+                    logger.warning(f"Failed to collect audio chunks: {e}")
+                    limited_chunks = []
                 
                 # Simple text matching (case-insensitive)
                 query_lower = query_text.lower()
@@ -183,6 +192,12 @@ class VideoSearchEngine:
                 top_k = settings.TOP_K_DESCRIPTION
 
             logger.info(f"Searching Description Index with query: '{query_text[:50]}...'")
+
+            # Check if frames_view exists
+            if not hasattr(self.video_info, 'frames_view') or not self.video_info.frames_view:
+                logger.info("Description Index not available (requires image index)")
+                return []
+
             frames_view = self.video_info.frames_view
 
             # Perform similarity search on descriptions
@@ -233,6 +248,12 @@ class VideoSearchEngine:
                 top_k = settings.TOP_K_DOMAIN
 
             logger.info(f"Searching Domain Index with query: '{query_text[:50]}...'")
+
+            # Check if frames_view exists
+            if not hasattr(self.video_info, 'frames_view') or not self.video_info.frames_view:
+                logger.info("Domain Index not available (requires image index)")
+                return []
+
             frames_view = self.video_info.frames_view
             
             # Get the domain caption column for this session

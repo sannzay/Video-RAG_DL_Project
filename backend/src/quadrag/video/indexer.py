@@ -280,7 +280,7 @@ class VideoIndexer:
                 raise ValueError(f"Video {video_id} not found in registry")
 
             # Check if frames_view exists (requires image index)
-            if not video_info.frames_view:
+            if not hasattr(video_info, 'frames_view') or not video_info.frames_view:
                 logger.warning(f"Cannot create Domain Index for video {video_id}: Image index not available")
                 logger.info(f"Domain context will be used for text-based search only")
                 # Still update the domain view to indicate domain context is set
