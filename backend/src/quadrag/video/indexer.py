@@ -360,7 +360,7 @@ class VideoIndexer:
                         img_base64 = base64.b64encode(buffer.getvalue()).decode()
 
                         # Create OpenAI client
-                        client = openai.OpenAI()
+                        client = OpenAI()
 
                         # Create domain-specific prompt
                         prompt = f"""Analyze this image in the context of: {domain_context}
