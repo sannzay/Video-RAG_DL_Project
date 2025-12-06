@@ -253,11 +253,19 @@ class VideoSearchEngine:
             # Try to get the frames view safely
             try:
                 frames_view = self.video_info.frames_view
+                logger.info(f"Frames view accessed successfully: {frames_view}")
             except Exception as e:
                 logger.warning(f"Description Index not accessible: {e}")
                 return []
 
             frames_view = self.video_info.frames_view
+
+            # Check if description column exists
+            if not hasattr(frames_view, 'description'):
+                logger.warning("Description column not found on frames_view")
+                return []
+
+            logger.info("Description column found, performing similarity search...")
 
             # Perform similarity search on descriptions
             sims = frames_view.description.similarity(query_text)
@@ -387,7 +395,8 @@ class VideoSearchEngine:
         else:
             results[IndexType.DOMAIN] = []
 
-        # Search image index if image provided
+        # For text queries, we don't search image index directly (use description index instead)
+        # Image index is only used for image-to-image similarity when query_image is provided
         if query_image:
             results[IndexType.IMAGE] = self.search_image_index(query_image)
         else:
