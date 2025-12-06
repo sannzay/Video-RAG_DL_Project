@@ -579,6 +579,9 @@ def _search_and_fuse_sync(video_id: str, session_id: str, query: str, domain_con
         Fused results
     """
     try:
+        print(f"DEBUG: Searching for query: '{query}'")
+        print(f"DEBUG: Domain context: {domain_context}")
+
         # Initialize search engine
         from quadrag.retrieval.search_engine import VideoSearchEngine
         search_engine = VideoSearchEngine(video_id, session_id)
@@ -594,6 +597,9 @@ def _search_and_fuse_sync(video_id: str, session_id: str, query: str, domain_con
         print(f"DEBUG: Search completed - total results: {total_results}")
         for index_type, results in search_results.items():
             print(f"DEBUG: {index_type.value}: {len(results)} results")
+            if results:
+                for i, result in enumerate(results[:2]):  # Show first 2 results
+                    print(f"DEBUG:   Result {i}: '{result.content[:100]}...' at {result.timestamp:.1f}s (score: {result.similarity:.3f})")
 
         # Fuse results
         from quadrag.retrieval.fusion import get_fusion
