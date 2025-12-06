@@ -9,6 +9,7 @@ from loguru import logger
 from openai import OpenAI
 from pixeltable.functions import openai as pxt_openai
 from pixeltable.functions.huggingface import clip
+from pixeltable.functions.openai import embeddings
 from pixeltable.functions.video import extract_audio
 from pixeltable.iterators import AudioSplitter
 from pixeltable.iterators.video import FrameIterator
