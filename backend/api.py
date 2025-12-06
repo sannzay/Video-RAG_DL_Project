@@ -50,8 +50,21 @@ except ImportError as e:
     _numpy_path = f"IMPORT_FAILED: {e}"
     _numpy_version = "N/A"
 
-# Step 4: Set up API keys for Pixeltable BEFORE any Pixeltable imports
-# This ensures transcription functions have access to the API keys
+# Step 4: Configure event loop policy BEFORE any async imports
+# Pixeltable uses nest_asyncio which can't patch uvloop event loops
+import asyncio
+asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())  # Use standard asyncio, not uvloop
+print("INFO: Set asyncio event loop policy to DefaultEventLoopPolicy")
+
+# Step 5: Initialize Pixeltable with standard asyncio event loop
+try:
+    import pixeltable as pxt
+    pxt.init()  # Initialize Pixeltable with standard asyncio event loop
+    print("INFO: Pixeltable initialized successfully")
+except Exception as e:
+    print(f"WARNING: Could not initialize Pixeltable: {e}")
+
+# Step 6: Set up API keys for Pixeltable
 try:
     from quadrag.config import get_settings
     _early_settings = get_settings()
@@ -59,7 +72,7 @@ try:
     os.environ["GOOGLE_API_KEY"] = _early_settings.GOOGLE_API_KEY or ""
     print("INFO: API keys configured for Pixeltable")
 except Exception as e:
-    print(f"WARNING: Could not configure API keys early: {e}")
+    print(f"WARNING: Could not configure API keys: {e}")
 
 # Step 4: Restore working directory (but keep sys.path clean)
 os.chdir(_original_cwd)
@@ -771,6 +784,7 @@ if __name__ == "__main__":
             port=port,
             log_level="info",
             access_log=True,
+            loop="asyncio",  # Use standard asyncio, not uvloop
         )
     except Exception as e:
         logger.error(f"Failed to start server: {e}")
