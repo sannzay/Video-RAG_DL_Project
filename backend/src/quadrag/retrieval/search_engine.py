@@ -142,21 +142,18 @@ class VideoSearchEngine:
                 # Limit to first 50 chunks to avoid blocking on all transcriptions
                 logger.warning(f"Embedding index not available, using text search on limited chunks: {e}")
                 
-                # Get all audio chunks data synchronously
+                # Get all audio chunks data - now running in proper async context
                 try:
-                    logger.info("Getting audio chunks data...")
+                    logger.info("Collecting audio chunks with pre-computed transcriptions...")
 
-                    # Try to get chunks using list() instead of collect()
-                    query = audio_view.select(
+                    # Since we're in async context, collect() should work
+                    limited_chunks = audio_view.select(
                         audio_view.start_time_sec,
                         audio_view.end_time_sec,
                         audio_view.transcript_text,
-                    ).limit(10)
+                    ).limit(10).collect()
 
-                    # Convert to list to get synchronous access
-                    limited_chunks = list(query)
-
-                    logger.info(f"Successfully got {len(limited_chunks)} audio chunks")
+                    logger.info(f"Successfully collected {len(limited_chunks)} audio chunks")
 
                     # Log transcription status for debugging
                     for i, chunk in enumerate(limited_chunks):
@@ -169,39 +166,8 @@ class VideoSearchEngine:
                             logger.warning(f"Chunk {i} has empty transcription, raw: {raw_transcript}")
 
                 except Exception as e:
-                    logger.warning(f"Failed to get audio chunks: {e}")
-                    logger.info("Trying alternative approach...")
-                    # Fallback: try to get individual transcriptions
+                    logger.warning(f"Failed to collect audio chunks: {e}")
                     limited_chunks = []
-                    try:
-                        # Get the count first
-                        total_count = len(audio_view)
-                        logger.info(f"Audio view has {total_count} total chunks")
-
-                        # Try to access first few chunks individually
-                        for i in range(min(10, total_count)):
-                            try:
-                                chunk = audio_view[i]  # Access by index
-                                transcription = str(chunk.get("transcript_text", ""))
-                                start_time = float(chunk.get("start_time_sec", 0))
-                                end_time = float(chunk.get("end_time_sec", 0))
-
-                                limited_chunks.append({
-                                    "start_time_sec": start_time,
-                                    "end_time_sec": end_time,
-                                    "transcript_text": transcription
-                                })
-
-                                logger.info(f"Got chunk {i}: '{transcription[:50]}...'")
-                            except Exception as chunk_e:
-                                logger.warning(f"Failed to get chunk {i}: {chunk_e}")
-                                break
-
-                        logger.info(f"Successfully got {len(limited_chunks)} chunks via indexing")
-
-                    except Exception as fallback_e:
-                        logger.error(f"Fallback approach also failed: {fallback_e}")
-                        limited_chunks = []
                 
                 # Simple text matching (case-insensitive)
                 query_lower = query_text.lower()

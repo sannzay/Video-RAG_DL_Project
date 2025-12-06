@@ -566,54 +566,6 @@ async def set_domain_context(request: DomainContextRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _search_and_fuse_sync(video_id: str, session_id: str, query: str, domain_context: Optional[str]):
-    """Synchronous search and fusion function that Pixeltable can handle.
-
-    Args:
-        video_id: Video identifier
-        session_id: Session identifier
-        query: Search query
-        domain_context: Optional domain context
-
-    Returns:
-        Fused results
-    """
-    try:
-        print(f"DEBUG: Searching for query: '{query}'")
-        print(f"DEBUG: Domain context: {domain_context}")
-
-        # Initialize search engine
-        from quadrag.retrieval.search_engine import VideoSearchEngine
-        search_engine = VideoSearchEngine(video_id, session_id)
-
-        # Search all indexes
-        search_results = search_engine.search_all_indexes(
-            query_text=query,
-            use_domain=domain_context is not None,
-        )
-
-        # Debug: Log search results
-        total_results = sum(len(results) for results in search_results.values())
-        print(f"DEBUG: Search completed - total results: {total_results}")
-        for index_type, results in search_results.items():
-            print(f"DEBUG: {index_type.value}: {len(results)} results")
-            if results:
-                for i, result in enumerate(results[:2]):  # Show first 2 results
-                    print(f"DEBUG:   Result {i}: '{result.content[:100]}...' at {result.timestamp:.1f}s (score: {result.similarity:.3f})")
-
-        # Fuse results
-        from quadrag.retrieval.fusion import get_fusion
-        fusion = get_fusion()
-        fused_results = fusion.fuse_results(search_results)
-
-        print(f"DEBUG: Fused results: {len(fused_results)}")
-        return fused_results
-    except Exception as e:
-        logger.error(f"Error in search and fusion: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return []
-
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -632,16 +584,39 @@ async def chat(request: ChatRequest):
         if not get_video_processor().video_exists(request.video_id):
             raise HTTPException(status_code=404, detail="Video not found or not processed")
 
-        # Run search and fusion in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
-        fused_results = await loop.run_in_executor(
-            executor,
-            _search_and_fuse_sync,
-            request.video_id,
-            request.session_id,
-            request.query,
-            request.domain_context
-        )
+        # Run search directly in async context since Pixeltable needs proper event loop
+        try:
+            # Initialize search engine directly
+            from quadrag.retrieval.search_engine import VideoSearchEngine
+            search_engine = VideoSearchEngine(request.video_id, request.session_id)
+
+            # Search all indexes
+            search_results = search_engine.search_all_indexes(
+                query_text=request.query,
+                use_domain=request.domain_context is not None,
+            )
+
+            # Debug: Log search results
+            total_results = sum(len(results) for results in search_results.values())
+            print(f"DEBUG: Search completed - total results: {total_results}")
+            for index_type, results in search_results.items():
+                print(f"DEBUG: {index_type.value}: {len(results)} results")
+                if results:
+                    for i, result in enumerate(results[:2]):  # Show first 2 results
+                        print(f"DEBUG:   Result {i}: '{result.content[:100]}...' at {result.timestamp:.1f}s (score: {result.similarity:.3f})")
+
+            # Fuse results
+            from quadrag.retrieval.fusion import get_fusion
+            fusion = get_fusion()
+            fused_results = fusion.fuse_results(search_results)
+
+            print(f"DEBUG: Fused results: {len(fused_results)}")
+
+        except Exception as e:
+            logger.error(f"Search failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            fused_results = []
 
         # Generate answer (this doesn't use Pixeltable, so it's fine to run async)
         response = get_generator_lazy().generate_answer(
