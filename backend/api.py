@@ -278,10 +278,10 @@ async def upload_video(file: UploadFile = File(...)):
 
             # Always transcode to ensure pixeltable compatibility
             logger.info("Transcoding video to guaranteed compatible format (H.264 Main + AAC)...")
-                transcoded_path = transcode_video(str(file_path))
-                # Replace original with transcoded
-                file_path.unlink()
-                Path(transcoded_path).rename(file_path)
+            transcoded_path = transcode_video(str(file_path))
+            # Replace original with transcoded
+            file_path.unlink()
+            Path(transcoded_path).rename(file_path)
             logger.info("Video transcoded successfully to pixeltable-compatible format")
         except Exception as e:
             logger.error(f"Video transcoding failed: {e}")
@@ -388,9 +388,9 @@ async def _process_video_async(video_id: str):
 
         # Create Description Index (only if Image Index succeeded, as it depends on resized_frame)
         if IndexType.IMAGE in indexes_created_list:
-        logger.info(f"Creating Description Index for {video_id}")
+            logger.info(f"Creating Description Index for {video_id}")
             if get_indexer_lazy().create_description_index(video_id):
-            indexes_created_list.append(IndexType.DESCRIPTION)
+                indexes_created_list.append(IndexType.DESCRIPTION)
                 logger.info(f"Description Index created successfully for {video_id}")
             else:
                 logger.warning(f"Description Index creation failed for {video_id}")
@@ -442,9 +442,9 @@ async def _process_video_background(video_id: str):
     """
     # Use processing lock to prevent concurrent Pixeltable operations
     async with processing_lock:
-    # Run Pixeltable operations in thread pool to avoid uvloop conflict
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(executor, _process_video_sync, video_id)
+        # Run Pixeltable operations in thread pool to avoid uvloop conflict
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(executor, _process_video_sync, video_id)
 
 
 @app.get("/video/{video_id}/status", response_model=VideoStatusResponse)

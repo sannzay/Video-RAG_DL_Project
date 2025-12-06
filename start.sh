@@ -39,7 +39,7 @@ echo "=== Testing Pixeltable Import (without database) ==="
 python -c 'import pixeltable as pxt; print(f"Pixeltable imported: {pxt.__version__}")' 2>&1 || (echo 'Pixeltable import failed - this might be expected' && true)
 
 echo "=== Checking Pixeltable Home ==="
-python -c 'import os; print(f"PIXELTABLE_HOME: {os.environ.get(\"PIXELTABLE_HOME\", \"NOT_SET\")}")' 2>&1
+python -c "import os; home = os.environ.get('PIXELTABLE_HOME', 'NOT_SET'); print(f'PIXELTABLE_HOME: {home}')" 2>&1
 
 echo "=== Launching FastAPI Application ==="
 # Don't use exec so we can see if the startup fails
