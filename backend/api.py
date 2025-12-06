@@ -728,11 +728,15 @@ async def debug_transcriptions(video_id: str):
                 ).collect()
 
                 transcriptions = []
-                for chunk in chunks:
+                for i, chunk in enumerate(chunks):
+                    text = str(chunk.get("transcript_text", "")).strip()
+                    raw_transcript = chunk.get("transcription", "")
+                    logger.info(f"Debug chunk {i}: text='{text[:100]}...', raw='{str(raw_transcript)[:200]}...'")
                     transcriptions.append({
                         "start_time": float(chunk.get("start_time_sec", 0)),
                         "end_time": float(chunk.get("end_time_sec", 0)),
-                        "text": str(chunk.get("transcript_text", "")).strip()
+                        "text": text,
+                        "raw_transcription": str(raw_transcript)
                     })
 
                 return {

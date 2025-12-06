@@ -156,10 +156,12 @@ class VideoSearchEngine:
                     # Log transcription status for debugging
                     for i, chunk in enumerate(limited_chunks):
                         transcription = str(chunk.get("transcript_text", ""))
+                        raw_transcript = chunk.get("transcription", "")
+                        logger.info(f"Chunk {i}: transcript_text='{transcription[:100]}...', raw_transcription='{str(raw_transcript)[:200]}...'")
                         if transcription.strip():
                             logger.debug(f"Chunk {i}: '{transcription[:100]}...'")
                         else:
-                            logger.warning(f"Chunk {i} has empty transcription")
+                            logger.warning(f"Chunk {i} has empty transcription, raw: {raw_transcript}")
 
                 except Exception as e:
                     logger.warning(f"Failed to collect audio chunks: {e}")
