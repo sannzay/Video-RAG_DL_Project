@@ -477,100 +477,14 @@ def show_connection_status():
     is_connected, message = check_api_connection()
     
     if is_connected:
-        st.sidebar.markdown("""
-        <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
-                    color: white; 
-                    padding: 0.75rem; 
-                    border-radius: 10px; 
-                    margin-bottom: 1rem;
-                    text-align: center;
-                    font-weight: 600;">
-            ✅ Backend Connected
-        </div>
-        """, unsafe_allow_html=True)
+        st.sidebar.success("Backend Connected")
     else:
-        st.sidebar.markdown(f"""
-        <div style="background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); 
-                    color: white; 
-                    padding: 0.75rem; 
-                    border-radius: 10px; 
-                    margin-bottom: 1rem;
-                    text-align: center;
-                    font-weight: 600;">
-            ❌ Backend Disconnected
-        </div>
-        """, unsafe_allow_html=True)
-        
-        with st.sidebar.expander("🔧 Connection Help", expanded=True):
-            st.markdown(f"""
-            **Backend URL:**  
-            `{current_api_url}`
-            
-            **Status:** {message}
-            """)
-            
-            # Diagnostic button
-            if st.button("🔍 Run Diagnostics", use_container_width=True):
-                with st.spinner("Running diagnostics..."):
-                    diagnostic_info = []
-                    
-                    # Test 1: Basic connectivity
-                    try:
-                        import socket
-                        from urllib.parse import urlparse
-                        parsed = urlparse(current_api_url)
-                        host = parsed.hostname
-                        port = parsed.port or (443 if parsed.scheme == 'https' else 80)
-                        
-                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        sock.settimeout(5)
-                        result = sock.connect_ex((host, port))
-                        sock.close()
-                        
-                        if result == 0:
-                            diagnostic_info.append("✅ Port is open and reachable")
-                        else:
-                            diagnostic_info.append(f"❌ Port {port} is not reachable")
-                    except Exception as e:
-                        diagnostic_info.append(f"⚠️ Port check failed: {str(e)[:50]}")
-                    
-                    # Test 2: HTTP/HTTPS endpoint
-                    try:
-                        test_response = requests.get(current_api_url, timeout=5, verify=True)
-                        diagnostic_info.append(f"✅ Root endpoint responded: {test_response.status_code}")
-                    except requests.exceptions.SSLError as e:
-                        diagnostic_info.append(f"❌ SSL Error: {str(e)[:80]}")
-                    except requests.exceptions.ConnectionError:
-                        diagnostic_info.append("❌ Cannot establish connection")
-                    except Exception as e:
-                        diagnostic_info.append(f"⚠️ Error: {str(e)[:80]}")
-                    
-                    # Test 3: Health endpoint
-                    try:
-                        health_response = requests.get(f"{current_api_url}/health", timeout=5, verify=True)
-                        if health_response.status_code == 200:
-                            diagnostic_info.append("✅ Health endpoint is working")
-                        else:
-                            diagnostic_info.append(f"⚠️ Health endpoint returned: {health_response.status_code}")
-                    except Exception as e:
-                        diagnostic_info.append(f"❌ Health endpoint failed: {str(e)[:80]}")
-                    
-                    # Display diagnostics
-                    st.markdown("**Diagnostics Results:**")
-                    for info in diagnostic_info:
-                        st.text(info)
-            
-            st.markdown("---")
-            st.markdown("""
-            **Troubleshooting:**
-            1. Verify the backend is running on Railway dashboard
-            2. Check Railway deployment logs for errors
-            3. Ensure the backend URL is correct
-            4. Check your internet connection
-            5. For local development, set `QUADRAG_API_URL=http://localhost:8000` in your `.env` file
-            """)
-            
-            if st.button("🔄 Retry Connection", use_container_width=True):
+        st.sidebar.error("Backend Disconnected")
+
+        with st.sidebar.expander("🔧 Connection Details"):
+            st.write(f"**URL:** {current_api_url}")
+            st.write(f"**Status:** {message}")
+            if st.button("🔄 Retry", use_container_width=True):
                 st.rerun()
 
 
@@ -601,25 +515,8 @@ def show_system_info():
     <div class="info-section">
         <div class="info-title">🎯 About QuadRAG</div>
         <div class="info-text">
-            QuadRAG uses <strong>four parallel semantic indexes</strong> to enable rich, context-aware question answering about video content:
-        </div>
-        <div class="feature-grid">
-            <div class="feature-item">
-                <div class="feature-icon">🖼️</div>
-                <div class="feature-label"><strong>Image Index</strong><br>Visual similarity search</div>
-            </div>
-            <div class="feature-item">
-                <div class="feature-icon">🎵</div>
-                <div class="feature-label"><strong>Audio Index</strong><br>Transcribed dialogue search</div>
-            </div>
-            <div class="feature-item">
-                <div class="feature-icon">📝</div>
-                <div class="feature-label"><strong>Description Index</strong><br>Scene understanding</div>
-            </div>
-            <div class="feature-item">
-                <div class="feature-icon">🎯</div>
-                <div class="feature-label"><strong>Domain Index</strong><br>Context-specific analysis</div>
-            </div>
+            QuadRAG uses <strong>four parallel semantic indexes</strong> for comprehensive video understanding:
+            <strong>Image</strong> • <strong>Audio</strong> • <strong>Description</strong> • <strong>Domain</strong>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -627,34 +524,17 @@ def show_system_info():
 
 def show_domain_context_dialog():
     """Show domain context input dialog."""
-    st.markdown('<div class="main-header">🎬 QuadRAG</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">A Four-Index Multimodal RAG System for Video Understanding</div>', unsafe_allow_html=True)
-    
     # Show system info
     show_system_info()
-    
+
     st.markdown("---")
     
     st.markdown("""
     <div class="gradient-card">
         <h2 style="margin: 0 0 1rem 0; font-size: 1.8rem;">🎯 Set Domain Context</h2>
         <p style="margin: 0; font-size: 1.1rem; opacity: 0.95;">
-            Specify the domain context to help QuadRAG focus on specific aspects of your videos.
-            This creates a specialized index for domain-specific analysis.
+            Specify what aspects of videos you want to focus on for specialized analysis.
         </p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("""
-    <div class="info-section">
-        <div class="info-title">💡 Example Domain Contexts</div>
-        <div class="info-text">
-            <strong>Emotions & Expressions:</strong> "Capture emotions and facial expressions"<br>
-            <strong>Object Detection:</strong> "Identify objects and their locations"<br>
-            <strong>Text Recognition:</strong> "Focus on text and written content"<br>
-            <strong>Body Language:</strong> "Analyze body language and gestures"<br>
-            <strong>Scene Analysis:</strong> "Describe scenes and environments"
-        </div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -684,18 +564,11 @@ def show_domain_context_dialog():
 
 def upload_video_section():
     """Video upload section with modern design."""
-    with st.expander("📤 Upload New Video", expanded=False):
-        st.markdown("""
-        <div class="info-text" style="margin-bottom: 1rem;">
-            Upload a video file to start analyzing. Supported formats: MP4, AVI, MOV, MKV
-        </div>
-        """, unsafe_allow_html=True)
-        
+    with st.expander("📤 Upload Video", expanded=False):
         uploaded_file = st.file_uploader(
-            "Choose a video file",
+            "Choose video file (MP4, AVI, MOV, MKV)",
             type=["mp4", "avi", "mov", "mkv"],
-            key="video_uploader",
-            help="Select a video file from your device"
+            key="video_uploader"
         )
         
         if uploaded_file is not None:
@@ -766,22 +639,10 @@ def upload_video_section():
 
 def show_video_library():
     """Show video library in sidebar with enhanced design."""
-    st.sidebar.markdown("""
-    <div style="margin-bottom: 1rem;">
-        <h2 style="font-size: 1.5rem; font-weight: 700; margin: 0;">📚 Video Library</h2>
-        <p style="color: #6c757d; font-size: 0.85rem; margin: 0.25rem 0 0 0;">
-            Manage your uploaded videos
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.sidebar.markdown("### 📚 Videos")
     
     if not st.session_state.uploaded_videos:
-        st.sidebar.markdown("""
-        <div class="info-card" style="text-align: center; padding: 2rem 1rem;">
-            <div style="font-size: 3rem; margin-bottom: 0.5rem;">📹</div>
-            <div style="color: #6c757d; font-size: 0.9rem;">No videos uploaded yet</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.sidebar.info("No videos uploaded yet")
         return
     
     # Stats
@@ -888,14 +749,8 @@ def show_video_library():
 
 def show_domain_context_panel():
     """Show current domain context with enhanced design."""
-    with st.expander("🎯 Current Domain Context", expanded=False):
-        st.markdown(
-            f'<div class="domain-context-box">'
-            f'<div style="font-size: 0.85rem; color: #6c757d; margin-bottom: 0.5rem; font-weight: 600;">DOMAIN CONTEXT</div>'
-            f'<div style="font-size: 1.1rem; color: #1a1a2e; font-weight: 500;">{st.session_state.domain_context}</div>'
-            f'</div>',
-            unsafe_allow_html=True
-        )
+    with st.expander("🎯 Domain Context", expanded=False):
+        st.write(f"**Focus:** {st.session_state.domain_context}")
         
         col1, col2 = st.columns([1, 1])
         with col1:
@@ -941,46 +796,14 @@ def show_chat_interface():
     
     # Check if video is selected and processed
     if not st.session_state.active_video_id:
-        st.markdown("""
-        <div class="info-card" style="text-align: center; padding: 3rem 2rem;">
-            <div style="font-size: 4rem; margin-bottom: 1rem;">📹</div>
-            <div style="font-size: 1.2rem; font-weight: 600; color: #1a1a2e; margin-bottom: 0.5rem;">
-                No Video Selected
-            </div>
-            <div style="color: #6c757d;">
-                Please upload and select a video to start chatting
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.warning("📹 Select a video to start chatting")
         return
-    
+
     video_info = st.session_state.uploaded_videos.get(st.session_state.active_video_id)
     if not video_info or video_info.get("status") != "completed":
-        st.markdown("""
-        <div class="info-card" style="text-align: center; padding: 2rem;">
-            <div style="font-size: 3rem; margin-bottom: 1rem;">⏳</div>
-            <div style="font-size: 1.1rem; font-weight: 600; color: #1a1a2e; margin-bottom: 0.5rem;">
-                Video Processing
-            </div>
-            <div style="color: #6c757d;">
-                Please wait for video processing to complete. This may take a few minutes.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.info("⏳ Video is still processing...")
         return
     
-    # Show active video info
-    st.markdown(f"""
-    <div class="info-card" style="padding: 1rem;">
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <span style="font-size: 1.2rem;">📹</span>
-            <div>
-                <div style="font-weight: 600; color: #1a1a2e;">Active Video</div>
-                <div style="font-size: 0.9rem; color: #6c757d;">{video_info['filename']}</div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
     
     # Display chat history
     if st.session_state.chat_history:
@@ -1020,23 +843,7 @@ def show_chat_interface():
                         )
         st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.markdown("""
-        <div class="info-card" style="text-align: center; padding: 3rem 2rem; margin-bottom: 1rem;">
-            <div style="font-size: 3rem; margin-bottom: 1rem;">💬</div>
-            <div style="font-size: 1.1rem; font-weight: 600; color: #1a1a2e; margin-bottom: 0.5rem;">
-                Start a Conversation
-            </div>
-            <div style="color: #6c757d; margin-bottom: 1rem;">
-                Ask questions about the video content. QuadRAG will search across all four indexes to provide comprehensive answers.
-            </div>
-            <div style="font-size: 0.9rem; color: #6c757d;">
-                <strong>Example questions:</strong><br>
-                "What emotions are shown in the video?"<br>
-                "What objects appear in the scene?"<br>
-                "What is being said in the audio?"
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.info("💬 Ask questions about the video content")
     
     # Chat input
     user_query = st.chat_input("Ask a question about the video...")
@@ -1145,12 +952,7 @@ def main():
     
     # Footer
     st.sidebar.markdown("---")
-    st.sidebar.markdown("""
-    <div style="text-align: center; padding: 1rem 0;">
-        <div style="font-weight: 700; color: #1a1a2e; margin-bottom: 0.25rem;">QuadRAG v0.1.0</div>
-        <div style="font-size: 0.85rem; color: #6c757d;">A Four-Index Multimodal RAG System</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.sidebar.caption("QuadRAG v0.1.0")
 
 
 if __name__ == "__main__":
