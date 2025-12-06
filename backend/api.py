@@ -395,9 +395,13 @@ async def _process_video_async(video_id: str):
         else:
             logger.warning(f"Audio Index creation failed for {video_id}")
 
-        # Skip Image Index for now due to PyTorch/transformers compatibility issues
-        logger.info(f"Skipping Image Index creation (PyTorch 2.1 compatibility issue)")
-        # TODO: Re-enable when PyTorch/transformers versions are properly aligned
+        # Create Image Index
+        logger.info(f"Creating Image Index for {video_id}")
+        if get_indexer_lazy().create_image_index(video_id):
+            indexes_created_list.append(IndexType.IMAGE)
+            logger.info(f"Image Index created successfully for {video_id}")
+        else:
+            logger.warning(f"Image Index creation failed for {video_id}")
 
         # Create Description Index (only if Image Index succeeded, as it depends on resized_frame)
         if IndexType.IMAGE in indexes_created_list:
