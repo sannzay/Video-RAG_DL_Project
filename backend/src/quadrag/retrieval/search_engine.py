@@ -266,11 +266,10 @@ class VideoSearchEngine:
                     similarity=sims,
                 ).order_by(sims, asc=False).limit(top_k)
 
-                # Convert to RetrievalResult - collect() can cause event loop issues
+                # Convert to RetrievalResult
                 retrieval_results = []
                 try:
-                    results_list = list(results)  # Use list() instead of .collect()
-                    for entry in results_list:
+                    for entry in results.collect():
                         retrieval_results.append(
                             RetrievalResult(
                                 content=entry["description"],
