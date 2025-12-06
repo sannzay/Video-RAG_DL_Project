@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # === Model Configuration ===
     AUDIO_TRANSCRIPT_MODEL: str = "whisper-1"
     IMAGE_CAPTION_MODEL: str = "gpt-4o-mini"
-    TEXT_EMBEDDING_MODEL: str = "models/text-embedding-004"
+    TEXT_EMBEDDING_MODEL: str = "text-embedding-3-small"
     IMAGE_EMBEDDING_MODEL: str = "openai/clip-vit-base-patch32"
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 

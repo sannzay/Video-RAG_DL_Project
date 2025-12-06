@@ -48,10 +48,18 @@ def describe_image(image: pxt.type_system.Image) -> str:
         str: Detailed description of the image content
     """
     try:
+        # Validate input
+        if image is None:
+            return "Invalid image: None provided"
+
         # Convert PIL Image to base64
         buffer = BytesIO()
         image.save(buffer, format="PNG")
         img_base64 = base64.b64encode(buffer.getvalue()).decode()
+
+        # Validate base64 encoding
+        if not img_base64:
+            return "Failed to encode image"
 
         # Create OpenAI client (will use environment variable OPENAI_API_KEY)
         client = openai.OpenAI()
@@ -70,11 +78,21 @@ def describe_image(image: pxt.type_system.Image) -> str:
             temperature=0.3
         )
 
-        description = response.choices[0].message.content.strip()
-        return description if description else "Unable to generate description"
+        # Validate response
+        if not response or not response.choices or len(response.choices) == 0:
+            return "No response from vision API"
+
+        description = response.choices[0].message.content
+        if description and isinstance(description, str):
+            description = description.strip()
+            # Ensure we return a non-empty string
+            return description if len(description) > 0 else "Empty description from API"
+        else:
+            return "Invalid response format from vision API"
 
     except Exception as e:
         # Return a safe fallback instead of raising an exception
         # This prevents the entire indexing process from failing
-        return f"Description unavailable: {str(e)}"
+        error_msg = str(e)[:100]  # Truncate long error messages
+        return f"Description unavailable: {error_msg}"
 
