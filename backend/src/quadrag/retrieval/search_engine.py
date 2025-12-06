@@ -282,57 +282,10 @@ class VideoSearchEngine:
             List of RetrievalResult objects
         """
         try:
-            if not self.session_id:
-                logger.warning("No session_id provided for domain search")
-                return []
-
-            if top_k is None:
-                top_k = settings.TOP_K_DOMAIN
-
-            logger.info(f"Searching Domain Index with query: '{query_text[:50]}...'")
-
-            # Check if frames_view exists (avoid triggering property getter that calls pxt.get_table)
-            if not self.video_info.frames_view_name:
-                logger.info("Domain Index not available (requires image index)")
-                return []
-
-            # Try to get the frames view safely
-            try:
-                frames_view = self.video_info.frames_view
-            except Exception as e:
-                logger.warning(f"Domain Index not accessible: {e}")
-                return []
-            
-            # Get the domain caption column for this session
-            column_name = f"domain_caption_{self.session_id[:8]}"
-            
-            if not hasattr(frames_view, column_name):
-                logger.warning(f"Domain caption column {column_name} not found")
-                return []
-
-            # Perform similarity search on domain captions
-            domain_column = getattr(frames_view, column_name)
-            sims = domain_column.similarity(query_text)
-            results = frames_view.select(
-                frames_view.pos_msec,
-                domain_column,
-                similarity=sims,
-            ).order_by(sims, asc=False).limit(top_k)
-
-            # Convert to RetrievalResult
-            retrieval_results = []
-            for entry in results.collect():
-                retrieval_results.append(
-                    RetrievalResult(
-                        content=entry[column_name],
-                        timestamp=float(entry["pos_msec"]) / 1000.0,
-                        similarity=float(entry["similarity"]),
-                        source=IndexType.DOMAIN,
-                    )
-                )
-
-            logger.info(f"Found {len(retrieval_results)} domain results")
-            return retrieval_results
+            logger.info(f"Domain Index search requested but disabled (no image index)")
+            logger.info(f"Domain context is available for text-based search enhancement")
+            # Return empty results since domain index is not created
+            return []
 
         except Exception as e:
             logger.error(f"Error searching Domain Index: {type(e).__name__}: {e}")
