@@ -240,9 +240,57 @@ class VideoSearchEngine:
             List of RetrievalResult objects
         """
         try:
-            logger.info(f"Description Index search disabled (Vision API conflicts)")
-            # Return empty results since description index is not created
-            return []
+            if top_k is None:
+                top_k = settings.TOP_K_DESCRIPTION
+
+            logger.info(f"Searching Description Index with query: '{query_text[:50]}...'")
+
+            # Check if frames view exists
+            if not self.video_info.frames_view_name:
+                logger.info("Description Index not available (no frames view)")
+                return []
+
+            # Try to get the frames view safely
+            try:
+                frames_view = self.video_info.frames_view
+            except Exception as e:
+                logger.error(f"Description Index not accessible: {e}")
+                return []
+
+            # Try similarity search on description column
+            try:
+                sims = frames_view.description.similarity(query_text)
+                results = frames_view.select(
+                    frames_view.pos_msec,
+                    frames_view.description,
+                    similarity=sims,
+                ).order_by(sims, asc=False).limit(top_k)
+
+                # Convert to RetrievalResult - collect() can cause event loop issues
+                retrieval_results = []
+                try:
+                    results_list = list(results)  # Use list() instead of .collect()
+                    for entry in results_list:
+                        retrieval_results.append(
+                            RetrievalResult(
+                                content=entry["description"],
+                                timestamp=float(entry["pos_msec"]) / 1000.0,
+                                similarity=float(entry["similarity"]),
+                                source=IndexType.DESCRIPTION,
+                            )
+                        )
+
+                    logger.info(f"Found {len(retrieval_results)} description results")
+                    return retrieval_results
+
+                except Exception as e:
+                    logger.error(f"Failed to collect description results: {e}")
+                    return []
+
+            except Exception as e:
+                logger.error(f"Description similarity search failed: {e}")
+                logger.info("Description column may not exist or embedding index not available")
+                return []
 
         except Exception as e:
             logger.error(f"Error searching Description Index: {type(e).__name__}: {e}")

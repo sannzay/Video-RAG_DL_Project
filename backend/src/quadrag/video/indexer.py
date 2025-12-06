@@ -238,12 +238,46 @@ class VideoIndexer:
             True if successful
         """
         try:
-            logger.warning(f"Description Index creation disabled: Vision API causes event loop conflicts")
-            logger.info(f"Description index will be skipped to avoid issues")
-            return True  # Return True so processing continues
+            logger.info(f"Creating Description Index for video {video_id}")
+
+            # Get video info from registry
+            video_info = get_video_from_registry(video_id)
+            if not video_info:
+                raise ValueError(f"Video {video_id} not found in registry")
+
+            # Check if frames view exists (created by create_image_index)
+            try:
+                frames_view = pxt.get_table(video_info.frames_view_name)
+            except Exception as e:
+                logger.error(f"Frames view not found: {e}. Make sure Image Index is created first.")
+                return False
+
+            # Import our synchronous description function
+            from quadrag.video.functions import describe_image
+
+            # Add description column using synchronous UDF
+            logger.info("Adding description column using synchronous OpenAI Vision API")
+            frames_view.add_computed_column(
+                description=describe_image(frames_view.resized_frame),
+                if_exists="ignore",
+            )
+
+            # Create text embedding index for descriptions
+            logger.info("Creating text embedding index for descriptions")
+            frames_view.add_embedding_index(
+                column=frames_view.description,
+                string_embed=embeddings.using(model=settings.TEXT_EMBEDDING_MODEL),
+                if_exists="replace_force",
+            )
+
+            logger.info(f"Successfully created Description Index for video {video_id}")
+            return True
 
         except Exception as e:
             logger.error(f"Failed to create Description Index: {e}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return False
 
     def create_domain_index(
