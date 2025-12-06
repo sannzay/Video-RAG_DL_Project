@@ -511,15 +511,9 @@ def initialize_session_state():
 
 def show_system_info():
     """Display system information and features."""
-    st.markdown("""
-    <div class="info-section">
-        <div class="info-title">🎯 About QuadRAG</div>
-        <div class="info-text">
-            QuadRAG uses <strong>four parallel semantic indexes</strong> for comprehensive video understanding:
-            <strong>Image</strong> • <strong>Audio</strong> • <strong>Description</strong> • <strong>Domain</strong>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🎯 About")
+    st.sidebar.caption("Four indexes: **Image** • **Audio** • **Description** • **Domain**")
 
 
 def show_domain_context_dialog():
@@ -564,77 +558,26 @@ def show_domain_context_dialog():
 
 def upload_video_section():
     """Video upload section with modern design."""
-    with st.expander("📤 Upload Video", expanded=False):
-        uploaded_file = st.file_uploader(
-            "Choose video file (MP4, AVI, MOV, MKV)",
-            type=["mp4", "avi", "mov", "mkv"],
-            key="video_uploader"
-        )
-        
-        if uploaded_file is not None:
-            file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
-            st.info(f"📹 **{uploaded_file.name}** ({file_size_mb:.2f} MB)")
-            
-            if st.button("🚀 Upload and Process", type="primary", use_container_width=True):
-                # Check connection first
-                current_url = get_api_base_url()
-                is_connected, message = check_api_connection()
-                if not is_connected:
-                    st.error(f"❌ Cannot connect to backend: {message}")
-                    st.info(f"**Backend URL:** `{current_url}`\n\n**Troubleshooting:**\n1. Verify Railway backend is running\n2. Check your internet connection\n3. For local development, set `QUADRAG_API_URL=http://localhost:8000`")
-                    return
-                
-                with st.spinner("📤 Uploading video..."):
-                    try:
-                        # Upload video
-                        files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
-                        response = requests.post(f"{current_url}/upload-video", files=files, timeout=60)
-
-                        if response.status_code == 200:
-                            data = response.json()
-                            video_id = data["video_id"]
-
-                            st.success(f"✅ Video uploaded successfully!")
-
-                            # Start processing
-                            with st.spinner("⚙️ Processing video (creating indexes)..."):
-                                try:
-                                    current_url = get_api_base_url()
-                                    process_response = requests.post(
-                                        f"{current_url}/process-video",
-                                        json={"video_id": video_id},
-                                        timeout=30
-                                    )
-
-                                    if process_response.status_code == 200:
-                                        st.session_state.uploaded_videos[video_id] = {
-                                            "filename": uploaded_file.name,
-                                            "upload_time": datetime.now(),
-                                            "status": "processing",
-                                        }
-                                        st.session_state.active_video_id = video_id
-
-                                        st.info("🔄 Video is being processed. This may take a few minutes. You can check the status in the sidebar.")
-                                        time.sleep(1)
-                                        st.rerun()
-                                    else:
-                                        st.error(f"❌ Failed to start processing: {process_response.status_code}")
-                                        if process_response.text:
-                                            st.error(f"Error: {process_response.text}")
-                                except requests.exceptions.RequestException as e:
-                                    st.error(f"❌ Connection error while processing: {str(e)}")
-                        else:
-                            st.error(f"❌ Failed to upload video: Status {response.status_code}")
-                            if response.text:
-                                st.error(f"Error: {response.text}")
-                    except requests.exceptions.ConnectionError:
-                        current_url = get_api_base_url()
-                        st.error(f"❌ Cannot connect to backend at `{current_url}`")
-                        st.info("**Please check:**\n1. Railway backend is running\n2. Your internet connection is active\n3. Backend URL is correct")
-                    except requests.exceptions.Timeout:
-                        st.error("❌ Request timed out. The backend may be slow or unresponsive.")
-                    except Exception as e:
-                        st.error(f"❌ Unexpected error: {str(e)}")
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                color: white; 
+                padding: 2rem; 
+                border-radius: 16px; 
+                margin: 1.5rem 0;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
+        <h2 style="margin: 0 0 1rem 0; font-size: 1.5rem; color: white;">📤 Upload Video</h2>
+        <p style="margin: 0; opacity: 0.9; font-size: 0.95rem;">Upload a video file to start analyzing</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    uploaded_file = st.file_uploader(
+        "Choose video file (MP4, AVI, MOV, MKV)",
+        type=["mp4", "avi", "mov", "mkv"],
+        key="video_uploader",
+        label_visibility="collapsed"
+    )
+    
+    return uploaded_file
 
 
 def show_video_library():
@@ -938,16 +881,84 @@ def main():
     
     # Sidebar
     show_video_library()
+    show_system_info()  # Move to sidebar
     
-    # Main content
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        show_domain_context_panel()
-    with col2:
-        show_system_info()
+    # Main content - Upload Video (prominent)
+    uploaded_file = upload_video_section()
     
-    upload_video_section()
+    # Process upload if file selected
+    if uploaded_file is not None:
+        file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
+        st.info(f"📹 **{uploaded_file.name}** ({file_size_mb:.2f} MB)")
+        
+        if st.button("🚀 Upload and Process", type="primary", use_container_width=True):
+            # Check connection first
+            current_url = get_api_base_url()
+            is_connected, message = check_api_connection()
+            if not is_connected:
+                st.error(f"❌ Cannot connect to backend: {message}")
+                return
+            
+            with st.spinner("📤 Uploading video..."):
+                try:
+                    # Upload video
+                    files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
+                    response = requests.post(f"{current_url}/upload-video", files=files, timeout=60)
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        video_id = data["video_id"]
+
+                        st.success(f"✅ Video uploaded successfully!")
+
+                        # Start processing
+                        with st.spinner("⚙️ Processing video (creating indexes)..."):
+                            try:
+                                process_response = requests.post(
+                                    f"{current_url}/process-video",
+                                    json={"video_id": video_id},
+                                    timeout=30
+                                )
+
+                                if process_response.status_code == 200:
+                                    st.session_state.uploaded_videos[video_id] = {
+                                        "filename": uploaded_file.name,
+                                        "upload_time": datetime.now(),
+                                        "status": "processing",
+                                    }
+                                    st.session_state.active_video_id = video_id
+
+                                    st.info("🔄 Video is being processed. This may take a few minutes. You can check the status in the sidebar.")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Failed to start processing: {process_response.status_code}")
+                                    if process_response.text:
+                                        st.error(f"Error: {process_response.text}")
+                            except requests.exceptions.RequestException as e:
+                                st.error(f"❌ Connection error while processing: {str(e)}")
+                    else:
+                        st.error(f"❌ Failed to upload video: Status {response.status_code}")
+                        if response.text:
+                            st.error(f"Error: {response.text}")
+                except requests.exceptions.ConnectionError:
+                    current_url = get_api_base_url()
+                    st.error(f"❌ Cannot connect to backend at `{current_url}`")
+                    st.info("**Please check:**\n1. Railway backend is running\n2. Your internet connection is active\n3. Backend URL is correct")
+                except requests.exceptions.Timeout:
+                    st.error("❌ Request timed out. The backend may be slow or unresponsive.")
+                except Exception as e:
+                    st.error(f"❌ Unexpected error: {str(e)}")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Domain Context (clean, no collision)
+    show_domain_context_panel()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
     st.divider()
+    
+    # Chat Interface
     show_chat_interface()
     
     # Footer
