@@ -59,24 +59,6 @@ class VideoStatusResponse(BaseModel):
     error_message: Optional[str] = None
 
 
-class DomainContextRequest(BaseModel):
-    """Request to set domain context for a session."""
-
-    session_id: str
-    video_id: str
-    domain_context: str
-
-
-class DomainContextResponse(BaseModel):
-    """Response after setting domain context."""
-
-    session_id: str
-    video_id: str
-    domain_context: str
-    status: str
-    message: str
-
-
 class RetrievalResult(BaseModel):
     """Single retrieval result."""
 

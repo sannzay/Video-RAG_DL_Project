@@ -101,8 +101,6 @@ else:
 from quadrag.models import (
     ChatRequest,
     ChatResponse,
-    DomainContextRequest,
-    DomainContextResponse,
     HealthResponse,
     IndexType,
     ProcessingStatus,
@@ -524,66 +522,6 @@ async def get_video_status(video_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/set-domain-context", response_model=DomainContextResponse)
-async def set_domain_context(request: DomainContextRequest):
-    """Set domain context for a session and create domain index.
-
-    Args:
-        request: Domain context request
-
-    Returns:
-        DomainContextResponse with status
-    """
-    try:
-        logger.info(
-            f"Setting domain context for video {request.video_id}, "
-            f"session {request.session_id}: {request.domain_context}"
-        )
-
-        # Check if video exists
-        if not get_video_processor().video_exists(request.video_id):
-            raise HTTPException(status_code=404, detail="Video not found")
-
-        # Create domain index in thread pool (with new event loop)
-        async def _create_domain_index_async(video_id: str, session_id: str, domain_context: str):
-            """Create domain index async function."""
-            # Wrap in a task to ensure proper async context
-            async def _run_index_creation():
-                return get_indexer_lazy().create_domain_index(video_id, session_id, domain_context)
-            
-            task = asyncio.create_task(_run_index_creation())
-            return await task
-        
-        def _create_domain_index_sync(video_id: str, session_id: str, domain_context: str):
-            """Create domain index with new event loop."""
-            # Use asyncio.run() which properly sets up the event loop and task context
-            return asyncio.run(_create_domain_index_async(video_id, session_id, domain_context))
-        
-        loop = asyncio.get_event_loop()
-        success = await loop.run_in_executor(
-            executor,
-            _create_domain_index_sync,
-            request.video_id,
-            request.session_id,
-            request.domain_context
-        )
-
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to create domain index")
-
-        return DomainContextResponse(
-            session_id=request.session_id,
-            video_id=request.video_id,
-            domain_context=request.domain_context,
-            status="success",
-            message="Domain context set successfully",
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error setting domain context: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 

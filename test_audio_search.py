@@ -70,9 +70,9 @@ def test_transcription():
                 print(f"  Raw transcription: {str(raw_transcript)[:200]}...")
                 print(f"  Text transcription: '{str(text_transcript)[:200]}'...")
 
-        except Exception as e:
+            except Exception as e:
             print(f"Error accessing audio view: {e}")
-            import traceback
+                import traceback
             traceback.print_exc()
 
     except Exception as e:

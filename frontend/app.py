@@ -809,22 +809,7 @@ def show_domain_context_panel():
                     st.session_state.domain_context = new_context.strip()
                     st.session_state.domain_context_editing = False
                     
-                    # Update domain index for active video
-                    if st.session_state.active_video_id:
-                        with st.spinner("Updating domain index..."):
-                            current_url = get_api_base_url()
-                            response = requests.post(
-                                f"{current_url}/set-domain-context",
-                                json={
-                                    "session_id": st.session_state.session_id,
-                                    "video_id": st.session_state.active_video_id,
-                                    "domain_context": st.session_state.domain_context,
-                                }
-                            )
-                            if response.status_code == 200:
-                                st.success("✅ Domain context updated!")
-                            else:
-                                st.error("Failed to update domain context")
+                    # Domain context is set during video upload, no need to update
                     st.rerun()
         with col2:
             if st.button("❌ Cancel", use_container_width=True):
@@ -914,21 +899,6 @@ def show_chat_interface():
             "role": "user",
             "content": user_query
         })
-        
-        # Set domain context if not already set
-        if st.session_state.domain_context:
-            try:
-                current_url = get_api_base_url()
-                requests.post(
-                    f"{current_url}/set-domain-context",
-                    json={
-                        "session_id": st.session_state.session_id,
-                        "video_id": st.session_state.active_video_id,
-                        "domain_context": st.session_state.domain_context,
-                    }
-                )
-            except:
-                pass  # Domain index may already exist
         
         # Call chat API
         with st.spinner("🤔 Thinking..."):

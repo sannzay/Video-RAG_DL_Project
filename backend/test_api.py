@@ -94,28 +94,6 @@ def test_check_status(video_id: str, wait_for_completion: bool = True):
     return False
 
 
-def test_set_domain_context(video_id: str, session_id: str, domain_context: str):
-    """Test setting domain context."""
-    print(f"Setting domain context: {domain_context}")
-    
-    response = requests.post(
-        f"{API_BASE_URL}/set-domain-context",
-        json={
-            "session_id": session_id,
-            "video_id": video_id,
-            "domain_context": domain_context,
-        }
-    )
-    
-    print(f"Status: {response.status_code}")
-    if response.status_code == 200:
-        data = response.json()
-        print(f"Domain context set: {data['domain_context']}")
-        print("✅ Domain context set successfully\n")
-        return True
-    else:
-        print(f"❌ Domain context failed: {response.text}\n")
-        return False
 
 
 def test_chat(video_id: str, session_id: str, query: str, domain_context: str = None):
@@ -179,8 +157,6 @@ def main():
     #     test_check_status(video_id, wait_for_completion=True)
     #     
     #     session_id = "test_session_123"
-    #     domain_context = "Capture emotions and facial expressions"
-    #     test_set_domain_context(video_id, session_id, domain_context)
     #     test_chat(video_id, session_id, "What happens in the video?", domain_context)
 
 
