@@ -580,6 +580,21 @@ def upload_video_section():
     return uploaded_file
 
 
+def get_required_indexes(has_domain_context: bool = False) -> list:
+    """Get list of required indexes based on whether domain context is provided.
+    
+    Args:
+        has_domain_context: Whether domain context was provided
+        
+    Returns:
+        List of required index names
+    """
+    base_indexes = ["AUDIO", "IMAGE", "DESCRIPTION"]
+    if has_domain_context:
+        return base_indexes + ["DOMAIN"]
+    return base_indexes
+
+
 def show_video_library():
     """Show video library in sidebar with enhanced design."""
     st.sidebar.markdown("### 📚 Videos")
@@ -588,10 +603,26 @@ def show_video_library():
         st.sidebar.info("No videos uploaded yet")
         return
     
-    # Stats
+    # Check if domain context is set (for determining required indexes)
+    has_domain_context = bool(st.session_state.get("domain_context") and 
+                              st.session_state.domain_context != "General video analysis")
+    
+    # Stats - only count as completed if all required indexes are ready
     total_videos = len(st.session_state.uploaded_videos)
-    completed = sum(1 for v in st.session_state.uploaded_videos.values() if v.get("status") == "completed")
-    processing = sum(1 for v in st.session_state.uploaded_videos.values() if v.get("status") == "processing")
+    required_indexes = get_required_indexes(has_domain_context)
+    
+    completed = 0
+    processing = 0
+    
+    for v in st.session_state.uploaded_videos.values():
+        indexes = v.get("indexes", [])
+        index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
+        has_required_indexes = all(idx in index_names for idx in required_indexes)
+        
+        if v.get("status") == "completed" and has_required_indexes:
+            completed += 1
+        else:
+            processing += 1
 
     col1, col2, col3 = st.sidebar.columns(3)
     with col1:
@@ -614,8 +645,30 @@ def show_video_library():
             status_response = requests.get(f"{current_url}/video/{video_id}/status", timeout=5)
             if status_response.status_code == 200:
                 status_data = status_response.json()
-                status = status_data["status"]
+                api_status = status_data["status"]
                 indexes = status_data.get("indexes_created", [])
+                
+                # Convert indexes to strings for comparison
+                index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
+                
+                # Determine required indexes based on whether domain context was provided
+                # Check if domain context exists and is not the default
+                has_domain_context = bool(st.session_state.get("domain_context") and 
+                                        st.session_state.domain_context != "General video analysis")
+                required_indexes = get_required_indexes(has_domain_context)
+                
+                # Check if all required indexes are present
+                has_required_indexes = all(idx in index_names for idx in required_indexes)
+                
+                # Only mark as completed if API says completed AND all required indexes are ready
+                if api_status == "completed" and has_required_indexes:
+                    status = "completed"
+                elif api_status == "completed" and not has_required_indexes:
+                    # Backend says completed but not all required indexes are ready
+                    status = "processing"
+                else:
+                    status = api_status
+                
                 # Debug logging
                 if status != video_info.get("status"):
                     st.sidebar.write(f"🔄 Status change for {video_id[:8]}...: {video_info.get('status')} → {status}")
@@ -652,12 +705,28 @@ def show_video_library():
         </div>
         """, unsafe_allow_html=True)
 
-        # Status badge
+        # Determine required indexes for this video
+        has_domain_context = bool(st.session_state.get("domain_context") and 
+                                 st.session_state.domain_context != "General video analysis")
+        required_indexes = get_required_indexes(has_domain_context)
+        all_possible_indexes = ["AUDIO", "IMAGE", "DESCRIPTION", "DOMAIN"]
+        index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
+        
+        # Status badge - only show Ready if all required indexes are present
         if status == "completed":
-            st.sidebar.markdown(
-                '<span class="status-badge status-completed">✓ Ready</span>',
-                unsafe_allow_html=True
-            )
+            has_required_indexes = all(idx in index_names for idx in required_indexes)
+            
+            if has_required_indexes:
+                st.sidebar.markdown(
+                    '<span class="status-badge status-completed">✓ Ready</span>',
+                    unsafe_allow_html=True
+                )
+            else:
+                # Show processing if not all required indexes are ready
+                st.sidebar.markdown(
+                    '<span class="status-badge status-processing">⏳ Processing</span>',
+                    unsafe_allow_html=True
+                )
         elif status == "processing":
             st.sidebar.markdown(
                 '<span class="status-badge status-processing">⏳ Processing</span>',
@@ -668,21 +737,27 @@ def show_video_library():
                 '<span class="status-badge status-failed">✗ Failed</span>',
                 unsafe_allow_html=True
             )
+        
+        # Indexes created - show all possible indexes with status (for all statuses)
+        st.sidebar.markdown(f"""
+        <div style="margin: 0.5rem 0;">
+            <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.25rem;">Indexes:</div>
+            <div>
+                {' '.join([
+                    f'<span class="index-badge active" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">{name}</span>' 
+                    if name in index_names 
+                    else f'<span class="index-badge" style="background: {"#e9ecef" if name in required_indexes else "#f8f9fa"}; color: #6c757d; opacity: {"0.6" if name in required_indexes else "0.4"}; border: {"1px solid #dee2e6" if name in required_indexes else "1px dashed #dee2e6"};">{name}</span>'
+                    for name in all_possible_indexes
+                ])}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Select button - only show if all required indexes are ready
+        if not is_active:
+            has_required_indexes = all(idx in index_names for idx in required_indexes)
             
-            # Indexes created
-            if indexes:
-                index_names = [idx.value if hasattr(idx, 'value') else str(idx) for idx in indexes]
-                st.sidebar.markdown(f"""
-                <div style="margin: 0.5rem 0;">
-                    <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.25rem;">Indexes:</div>
-                    <div>
-                        {' '.join([f'<span class="index-badge active">{name}</span>' for name in index_names])}
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            # Select button
-            if not is_active and status == "completed":
+            if has_required_indexes and status == "completed":
                 if st.sidebar.button(f"Select Video", key=f"select_{video_id}", use_container_width=True):
                     st.session_state.active_video_id = video_id
                     st.rerun()
@@ -692,44 +767,68 @@ def show_video_library():
 
 def show_domain_context_panel():
     """Show current domain context with enhanced design."""
-    with st.expander("🎯 Domain Context", expanded=False):
-        st.write(f"**Focus:** {st.session_state.domain_context}")
+    # Stylish domain context card
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+                color: white; 
+                padding: 1.5rem; 
+                border-radius: 16px; 
+                margin: 1rem 0;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+                border-left: 4px solid rgba(255,255,255,0.5);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+            <h3 style="margin: 0; font-size: 1.2rem; color: white; font-weight: 600;">🎯 Domain Context</h3>
+        </div>
+        <div style="font-size: 1rem; opacity: 0.95; line-height: 1.6;" id="domain-context-display">
+            {context}
+        </div>
+    </div>
+    """.format(context=st.session_state.domain_context), unsafe_allow_html=True)
+    
+    # Edit button
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("✏️ Edit", use_container_width=True, type="secondary"):
+            st.session_state.domain_context_editing = True
+            st.rerun()
+    
+    # Editing mode
+    if st.session_state.get("domain_context_editing", False):
+        st.markdown("---")
+        new_context = st.text_area(
+            "Update Domain Context:",
+            value=st.session_state.domain_context,
+            height=100,
+            help="Specify what aspects of videos you want to focus on"
+        )
         
         col1, col2 = st.columns([1, 1])
         with col1:
-            if st.button("🔄 Change Domain Context", use_container_width=True):
-                st.session_state.domain_context_editing = True
-                st.rerun()
-        
-        if st.session_state.get("domain_context_editing", False):
-            new_context = st.text_input("New domain context:", value=st.session_state.domain_context)
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                if st.button("✅ Update", type="primary", use_container_width=True):
-                    if new_context.strip():
-                        st.session_state.domain_context = new_context.strip()
-                        st.session_state.domain_context_editing = False
-                
-                # Update domain index for active video
-                if st.session_state.active_video_id:
-                    with st.spinner("Updating domain index..."):
-                        current_url = get_api_base_url()
-                        response = requests.post(
-                            f"{current_url}/set-domain-context",
-                            json={
-                                "session_id": st.session_state.session_id,
-                                "video_id": st.session_state.active_video_id,
-                                "domain_context": st.session_state.domain_context,
-                            }
-                        )
-                        if response.status_code == 200:
-                            st.success("✅ Domain context updated!")
-                        else:
-                            st.error("Failed to update domain context")
-                        st.rerun()
-            with col2:
-                if st.button("❌ Cancel", use_container_width=True):
+            if st.button("✅ Save", type="primary", use_container_width=True):
+                if new_context.strip():
+                    st.session_state.domain_context = new_context.strip()
                     st.session_state.domain_context_editing = False
+                    
+                    # Update domain index for active video
+                    if st.session_state.active_video_id:
+                        with st.spinner("Updating domain index..."):
+                            current_url = get_api_base_url()
+                            response = requests.post(
+                                f"{current_url}/set-domain-context",
+                                json={
+                                    "session_id": st.session_state.session_id,
+                                    "video_id": st.session_state.active_video_id,
+                                    "domain_context": st.session_state.domain_context,
+                                }
+                            )
+                            if response.status_code == 200:
+                                st.success("✅ Domain context updated!")
+                            else:
+                                st.error("Failed to update domain context")
+                    st.rerun()
+        with col2:
+            if st.button("❌ Cancel", use_container_width=True):
+                st.session_state.domain_context_editing = False
                 st.rerun()
 
 
@@ -743,8 +842,26 @@ def show_chat_interface():
         return
 
     video_info = st.session_state.uploaded_videos.get(st.session_state.active_video_id)
-    if not video_info or video_info.get("status") != "completed":
-        st.info("⏳ Video is still processing...")
+    if not video_info:
+        st.warning("📹 Select a video to start chatting")
+        return
+    
+    # Determine required indexes based on whether domain context was provided
+    has_domain_context = bool(st.session_state.get("domain_context") and 
+                              st.session_state.domain_context != "General video analysis")
+    required_indexes = get_required_indexes(has_domain_context)
+    
+    # Check if video has all required indexes ready
+    indexes = video_info.get("indexes", [])
+    index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
+    has_required_indexes = all(idx in index_names for idx in required_indexes)
+    
+    if video_info.get("status") != "completed" or not has_required_indexes:
+        missing_indexes = [idx for idx in required_indexes if idx not in index_names]
+        if missing_indexes:
+            st.info(f"⏳ Video is still processing... Missing indexes: {', '.join(missing_indexes)}")
+        else:
+            st.info("⏳ Video is still processing...")
         return
     
     
@@ -914,9 +1031,15 @@ def main():
                         # Start processing
                         with st.spinner("⚙️ Processing video (creating indexes)..."):
                             try:
+                                # Include domain context if set
+                                process_payload = {"video_id": video_id}
+                                if st.session_state.get("domain_context"):
+                                    process_payload["domain_context"] = st.session_state.domain_context
+                                    process_payload["session_id"] = st.session_state.session_id
+
                                 process_response = requests.post(
                                     f"{current_url}/process-video",
-                                    json={"video_id": video_id},
+                                    json=process_payload,
                                     timeout=30
                                 )
 

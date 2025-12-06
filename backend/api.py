@@ -342,7 +342,7 @@ async def process_video(request: VideoProcessRequest):
 
         # Start processing in background
         processing_status[video_id] = ProcessingStatus.PROCESSING
-        asyncio.create_task(_process_video_background(video_id))
+        asyncio.create_task(_process_video_background(video_id, request.domain_context, request.session_id))
 
         return VideoProcessResponse(
             video_id=video_id,
@@ -359,11 +359,13 @@ async def process_video(request: VideoProcessRequest):
         )
 
 
-async def _process_video_async(video_id: str):
+async def _process_video_async(video_id: str, domain_context: Optional[str] = None, session_id: Optional[str] = None):
     """Async video processing function (runs in event loop).
 
     Args:
         video_id: Video identifier
+        domain_context: Optional domain context for domain index
+        session_id: Optional session ID for domain index
     """
     logger.info(f"Starting background processing for video {video_id}")
 
@@ -414,6 +416,19 @@ async def _process_video_async(video_id: str):
         else:
             logger.info(f"Skipping Description Index (requires Image Index)")
 
+        # Create Domain Index if domain context and session_id are provided
+        if domain_context and session_id and IndexType.IMAGE in indexes_created_list:
+            logger.info(f"Creating Domain Index for {video_id} with context: {domain_context}")
+            if get_indexer_lazy().create_domain_index(video_id, session_id, domain_context):
+                indexes_created_list.append(IndexType.DOMAIN)
+                logger.info(f"Domain Index created successfully for {video_id}")
+            else:
+                logger.warning(f"Domain Index creation failed for {video_id}")
+        elif domain_context and session_id:
+            logger.info(f"Skipping Domain Index (requires Image Index)")
+        elif domain_context or session_id:
+            logger.info(f"Domain context provided but missing session_id or vice versa, skipping Domain Index")
+
     # Run Pixeltable operations as a task to ensure proper context
     task = asyncio.create_task(_run_pixeltable_ops())
     await task
@@ -432,17 +447,19 @@ async def _process_video_async(video_id: str):
 
 
 
-async def _process_video_background(video_id: str):
+async def _process_video_background(video_id: str, domain_context: Optional[str] = None, session_id: Optional[str] = None):
     """Background task to process video and create indexes.
 
     Args:
         video_id: Video identifier
+        domain_context: Optional domain context for domain index
+        session_id: Optional session ID for domain index
     """
     # Use processing lock to prevent concurrent Pixeltable operations
     async with processing_lock:
         # Run Pixeltable operations directly in async context
         try:
-            await _process_video_async(video_id)
+            await _process_video_async(video_id, domain_context, session_id)
         except Exception as e:
             logger.error(f"Error processing video {video_id}: {e}")
             processing_status[video_id] = ProcessingStatus.FAILED

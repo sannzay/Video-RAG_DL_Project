@@ -38,6 +38,8 @@ class VideoProcessRequest(BaseModel):
     """Request to process a video."""
 
     video_id: str
+    domain_context: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class VideoProcessResponse(BaseModel):
