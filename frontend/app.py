@@ -1000,6 +1000,11 @@ def main():
     show_video_library()
     show_system_info()  # Move to sidebar
     
+    # Domain Context (at the top, above upload)
+    show_domain_context_panel()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     # Main content - Upload Video (prominent)
     uploaded_file = upload_video_section()
     
@@ -1072,11 +1077,6 @@ def main():
                     st.error("❌ Request timed out. The backend may be slow or unresponsive.")
                 except Exception as e:
                     st.error(f"❌ Unexpected error: {str(e)}")
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Domain Context (clean, no collision)
-    show_domain_context_panel()
     
     st.markdown("<br>", unsafe_allow_html=True)
     st.divider()

@@ -1,6 +1,8 @@
 """Video indexer for creating the four semantic indexes."""
 
+import base64
 import os
+from io import BytesIO
 from typing import Optional
 
 import google.generativeai as genai
@@ -351,7 +353,47 @@ class VideoIndexer:
                     pos_msec = frame_data['pos_msec']
 
                     # Generate caption using direct API call
-                    caption = self._generate_domain_caption(frame_image, domain_context)
+                    try:
+                        # Convert PIL Image to base64
+                        buffer = BytesIO()
+                        frame_image.save(buffer, format="PNG")
+                        img_base64 = base64.b64encode(buffer.getvalue()).decode()
+
+                        # Create OpenAI client
+                        client = openai.OpenAI()
+
+                        # Create domain-specific prompt
+                        prompt = f"""Analyze this image in the context of: {domain_context}
+
+Describe what you see with specific focus on elements relevant to {domain_context}.
+Be detailed about objects, actions, and visual elements that would be important in this domain context."""
+
+                        # Make synchronous API call
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=[{
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt},
+                                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
+                                ]
+                            }],
+                            max_tokens=200,
+                            temperature=0.3
+                        )
+
+                        if response and response.choices and len(response.choices) > 0:
+                            description = response.choices[0].message.content
+                            if description and isinstance(description, str):
+                                caption = description.strip() or f"Empty description for {domain_context}"
+                            else:
+                                caption = f"Invalid response format for {domain_context}"
+                        else:
+                            caption = f"No response from vision API for {domain_context}"
+
+                    except Exception as e:
+                        error_msg = str(e)[:100]
+                        caption = f"Domain caption unavailable ({domain_context}): {error_msg}"
                     domain_captions[pos_msec] = caption
 
                     if (i + 1) % 5 == 0:  # Log every 5 frames
