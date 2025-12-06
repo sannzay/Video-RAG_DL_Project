@@ -240,55 +240,9 @@ class VideoSearchEngine:
             List of RetrievalResult objects
         """
         try:
-            if top_k is None:
-                top_k = settings.TOP_K_DESCRIPTION
-
-            logger.info(f"Searching Description Index with query: '{query_text[:50]}...'")
-
-            # Check if frames_view exists (avoid triggering property getter that calls pxt.get_table)
-            if not self.video_info.frames_view_name:
-                logger.info("Description Index not available (requires image index)")
-                return []
-
-            # Try to get the frames view safely
-            try:
-                frames_view = self.video_info.frames_view
-                logger.info(f"Frames view accessed successfully: {frames_view}")
-            except Exception as e:
-                logger.warning(f"Description Index not accessible: {e}")
-                return []
-
-            frames_view = self.video_info.frames_view
-
-            # Check if description column exists
-            if not hasattr(frames_view, 'description'):
-                logger.warning("Description column not found on frames_view")
-                return []
-
-            logger.info("Description column found, performing similarity search...")
-
-            # Perform similarity search on descriptions
-            sims = frames_view.description.similarity(query_text)
-            results = frames_view.select(
-                frames_view.pos_msec,
-                frames_view.description,
-                similarity=sims,
-            ).order_by(sims, asc=False).limit(top_k)
-
-            # Convert to RetrievalResult
-            retrieval_results = []
-            for entry in results.collect():
-                retrieval_results.append(
-                    RetrievalResult(
-                        content=entry["description"],
-                        timestamp=float(entry["pos_msec"]) / 1000.0,
-                        similarity=float(entry["similarity"]),
-                        source=IndexType.DESCRIPTION,
-                    )
-                )
-
-            logger.info(f"Found {len(retrieval_results)} description results")
-            return retrieval_results
+            logger.info(f"Description Index search disabled (Vision API conflicts)")
+            # Return empty results since description index is not created
+            return []
 
         except Exception as e:
             logger.error(f"Error searching Description Index: {type(e).__name__}: {e}")
