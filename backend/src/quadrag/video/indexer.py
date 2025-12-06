@@ -331,12 +331,32 @@ class VideoIndexer:
                 update_domain_view(video_id, domain_view_name)
                 return True
 
-            # Domain index creation disabled due to event loop conflicts with vision API
-            logger.warning(f"Domain Index creation disabled: Vision API causes event loop conflicts")
-            logger.info(f"Domain context '{domain_context}' will be used for text-based search enhancement only")
-            # Still update the domain view to indicate domain context is set
+            # Create domain-specific captions using synchronous UDF
+            from quadrag.video.functions import describe_image_with_domain
+
+            # Create column name for this session's domain captions
+            column_name = f"domain_caption_{session_id[:8]}"
+
+            # Add domain caption column using synchronous UDF
+            logger.info(f"Adding domain caption column '{column_name}' using synchronous OpenAI Vision API")
+            frames_view.add_computed_column(
+                **{column_name: describe_image_with_domain(frames_view.resized_frame, domain_context)},
+                if_exists="ignore",
+            )
+
+            # Create text embedding index for domain captions
+            logger.info(f"Creating text embedding index for domain captions column '{column_name}'")
+            frames_view.add_embedding_index(
+                column=getattr(frames_view, column_name),
+                string_embed=embeddings.using(model=settings.TEXT_EMBEDDING_MODEL),
+                if_exists="replace_force",
+            )
+
+            # Update the domain view to indicate domain context is set
             domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
             update_domain_view(video_id, domain_view_name)
+
+            logger.info(f"Successfully created Domain Index for video {video_id} with context: {domain_context}")
             return True
 
         except Exception as e:

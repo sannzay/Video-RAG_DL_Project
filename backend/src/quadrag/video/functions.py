@@ -96,3 +96,77 @@ def describe_image(image: pxt.type_system.Image) -> str:
         error_msg = str(e)[:100]  # Truncate long error messages
         return f"Description unavailable: {error_msg}"
 
+
+@pxt.udf
+def describe_image_with_domain(image: pxt.type_system.Image, domain_context: str) -> str:
+    """
+    Generate a domain-specific description of an image using OpenAI's Vision API.
+
+    This creates captions tailored to the user's domain context (e.g., "cooking tutorial",
+    "sports analysis", "medical procedure").
+
+    Args:
+        image: PIL Image to describe
+        domain_context: User's domain context for contextual captions
+
+    Returns:
+        str: Domain-specific description of the image content
+    """
+    try:
+        # Validate inputs
+        if image is None:
+            return "Invalid image: None provided"
+
+        if not domain_context or not isinstance(domain_context, str):
+            return "Invalid domain context provided"
+
+        # Convert PIL Image to base64
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        img_base64 = base64.b64encode(buffer.getvalue()).decode()
+
+        # Validate base64 encoding
+        if not img_base64:
+            return "Failed to encode image"
+
+        # Create OpenAI client (will use environment variable OPENAI_API_KEY)
+        client = openai.OpenAI()
+
+        # Create domain-specific prompt
+        prompt = f"""Analyze this image in the context of: {domain_context}
+
+Describe what you see with specific focus on elements relevant to {domain_context}.
+Be detailed about objects, actions, and visual elements that would be important in this domain context."""
+
+        # Make synchronous API call
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
+                ]
+            }],
+            max_tokens=200,
+            temperature=0.3
+        )
+
+        # Validate response
+        if not response or not response.choices or len(response.choices) == 0:
+            return f"No response from vision API for {domain_context}"
+
+        description = response.choices[0].message.content
+        if description and isinstance(description, str):
+            description = description.strip()
+            # Ensure we return a non-empty string
+            return description if len(description) > 0 else f"Empty description from API for {domain_context}"
+        else:
+            return f"Invalid response format from vision API for {domain_context}"
+
+    except Exception as e:
+        # Return a safe fallback instead of raising an exception
+        # This prevents the entire indexing process from failing
+        error_msg = str(e)[:100]  # Truncate long error messages
+        return f"Domain description unavailable ({domain_context}): {error_msg}"
+
