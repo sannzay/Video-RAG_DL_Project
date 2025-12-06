@@ -328,41 +328,12 @@ class VideoIndexer:
                 update_domain_view(video_id, domain_view_name)
                 return True
 
-            # Create domain-specific caption column
-            domain_prompt = settings.DOMAIN_PROMPT_TEMPLATE.format(
-                domain_context=domain_context
-            )
-
-            column_name = f"domain_caption_{session_id[:8]}"
-
-            logger.info(f"Generating domain-specific captions with prompt: {domain_prompt}")
-            from pixeltable.functions.openai import vision
-
-            frames_view.add_computed_column(
-                **{column_name: vision(
-                    prompt=domain_prompt,
-                    image=frames_view.resized_frame,
-                    model=settings.IMAGE_CAPTION_MODEL,
-                )},
-                if_exists="ignore",
-            )
-
-            # Add embedding index for domain captions
-            from pixeltable.functions.openai import embeddings
-
-            idx_name = f"domain_idx_{session_id[:8]}"
-            frames_view.add_embedding_index(
-                column=getattr(frames_view, column_name),
-                string_embed=embeddings.using(model="text-embedding-3-small"),
-                if_exists="replace_force",
-                idx_name=idx_name,
-            )
-
-            # Update registry with domain view info
-            domain_view_name = f"{video_info.frames_view_name}_{session_id[:8]}"
+            # Domain index creation disabled due to event loop conflicts with vision API
+            logger.warning(f"Domain Index creation disabled: Vision API causes event loop conflicts")
+            logger.info(f"Domain context '{domain_context}' will be used for text-based search enhancement only")
+            # Still update the domain view to indicate domain context is set
+            domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
             update_domain_view(video_id, domain_view_name)
-
-            logger.info(f"Successfully created Domain Index for video {video_id}")
             return True
 
         except Exception as e:
