@@ -413,25 +413,6 @@ async def _process_video_async(video_id: str):
         logger.error(f"Failed to create any indexes for video {video_id}")
 
 
-def _process_video_sync(video_id: str):
-    """Synchronous wrapper that runs async function in new event loop.
-
-    Args:
-        video_id: Video identifier
-    """
-    # Note: NumPy is pre-imported at module level to avoid the "source directory" error
-    # See the import section at the top of this file for details
-    
-    try:
-        # Use asyncio.run() which properly sets up the event loop and task context
-        # This ensures Pixeltable's internal async operations have proper task context
-        asyncio.run(_process_video_async(video_id))
-    except Exception as e:
-        logger.error(f"Error processing video {video_id}: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        processing_status[video_id] = ProcessingStatus.FAILED
-        processing_errors[video_id] = str(e)
 
 
 async def _process_video_background(video_id: str):
@@ -442,9 +423,14 @@ async def _process_video_background(video_id: str):
     """
     # Use processing lock to prevent concurrent Pixeltable operations
     async with processing_lock:
-        # Run Pixeltable operations in thread pool to avoid uvloop conflict
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(executor, _process_video_sync, video_id)
+        # Run Pixeltable operations directly in async context
+        try:
+            await _process_video_async(video_id)
+        except Exception as e:
+            logger.error(f"Error processing video {video_id}: {e}")
+            processing_status[video_id] = ProcessingStatus.FAILED
+            processing_errors[video_id] = str(e)
+            raise
 
 
 @app.get("/video/{video_id}/status", response_model=VideoStatusResponse)
