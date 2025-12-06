@@ -331,33 +331,46 @@ class VideoSearchEngine:
                 logger.warning(f"Domain Index not accessible: {e}")
                 return []
 
-            # Get the domain caption column for this session
-            column_name = f"domain_caption_{self.session_id[:8]}"
-
-            if not hasattr(frames_view, column_name):
-                logger.warning(f"Domain caption column {column_name} not found")
+            # Check if domain captions exist in registry
+            if not hasattr(self.video_info, 'domain_captions') or not self.video_info.domain_captions:
+                logger.warning("Domain captions not found in registry")
                 return []
 
-            # Perform similarity search on domain captions
-            domain_column = getattr(frames_view, column_name)
-            sims = domain_column.similarity(query_text)
-            results = frames_view.select(
-                frames_view.pos_msec,
-                domain_column,
-                similarity=sims,
-            ).order_by(sims, asc=False).limit(top_k)
+            # Get domain captions from registry
+            domain_captions = self.video_info.domain_captions
+            logger.info(f"Found {len(domain_captions)} domain captions in registry")
+
+            # Since we can't use Pixeltable embeddings for stored data,
+            # we'll do a simple text similarity search
+            import difflib
+
+            # Score each caption against the query
+            scored_captions = []
+            for pos_msec, caption in domain_captions.items():
+                # Use sequence matcher for simple text similarity
+                similarity = difflib.SequenceMatcher(None, query_text.lower(), caption.lower()).ratio()
+                scored_captions.append({
+                    'pos_msec': pos_msec,
+                    'caption': caption,
+                    'similarity': similarity
+                })
+
+            # Sort by similarity and take top_k
+            scored_captions.sort(key=lambda x: x['similarity'], reverse=True)
+            top_results = scored_captions[:top_k]
 
             # Convert to RetrievalResult
             retrieval_results = []
-            for entry in results.collect():
-                retrieval_results.append(
-                    RetrievalResult(
-                        content=entry[column_name],
-                        timestamp=float(entry["pos_msec"]) / 1000.0,
-                        similarity=float(entry["similarity"]),
-                        source=IndexType.DOMAIN,
+            for item in top_results:
+                if item['similarity'] > 0.1:  # Only include results with some similarity
+                    retrieval_results.append(
+                        RetrievalResult(
+                            content=item['caption'],
+                            timestamp=float(item['pos_msec']) / 1000.0,
+                            similarity=float(item['similarity']),
+                            source=IndexType.DOMAIN,
+                        )
                     )
-                )
 
             logger.info(f"Found {len(retrieval_results)} domain results")
             return retrieval_results

@@ -24,6 +24,8 @@ class VideoIndexInfo:
         audio_view_name: str,
         description_view_name: str,
         domain_view_name: Optional[str] = None,
+        domain_captions: Optional[Dict[float, str]] = None,
+        domain_context: Optional[str] = None,
     ):
         self.video_id = video_id
         self.cache_dir = cache_dir
@@ -32,6 +34,8 @@ class VideoIndexInfo:
         self.audio_view_name = audio_view_name
         self.description_view_name = description_view_name
         self.domain_view_name = domain_view_name
+        self.domain_captions = domain_captions or {}
+        self.domain_context = domain_context
 
     @property
     def video_table(self):
@@ -151,6 +155,21 @@ def update_domain_view(video_id: str, domain_view_name: str) -> None:
         _VIDEO_REGISTRY[video_id].domain_view_name = domain_view_name
         _save_registry()
         logger.info(f"Updated domain view for video {video_id}")
+
+
+def update_domain_captions(video_id: str, domain_captions: Dict[float, str], domain_context: str) -> None:
+    """Update the domain captions for a video.
+
+    Args:
+        video_id: Video identifier
+        domain_captions: Dictionary mapping pos_msec to captions
+        domain_context: The domain context used
+    """
+    if video_id in _VIDEO_REGISTRY:
+        _VIDEO_REGISTRY[video_id].domain_captions = domain_captions
+        _VIDEO_REGISTRY[video_id].domain_context = domain_context
+        _save_registry()
+        logger.info(f"Updated domain captions for video {video_id} ({len(domain_captions)} captions)")
 
 
 def get_all_videos() -> Dict[str, VideoIndexInfo]:

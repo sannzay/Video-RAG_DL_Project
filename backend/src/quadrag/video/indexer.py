@@ -331,27 +331,42 @@ class VideoIndexer:
                 update_domain_view(video_id, domain_view_name)
                 return True
 
-            # Set the global domain context for the UDF
-            from quadrag.video.functions import describe_image_with_domain, _current_domain_context
-            _current_domain_context = domain_context
+            # Create domain-specific captions by manually processing each frame
+            # Store them in registry for search access (avoiding Pixeltable UDF issues)
+            logger.info(f"Creating domain captions for {video_id} with context: {domain_context}")
 
-            # Create column name for this session's domain captions
-            column_name = f"domain_caption_{session_id[:8]}"
+            # Get all frames
+            frames_data = frames_view.select(
+                frames_view.pos_msec,
+                frames_view.resized_frame
+            ).collect()
 
-            # Add domain caption column using synchronous UDF
-            logger.info(f"Adding domain caption column '{column_name}' using synchronous OpenAI Vision API")
-            frames_view.add_computed_column(
-                **{column_name: describe_image_with_domain(frames_view.resized_frame)},
-                if_exists="ignore",
-            )
+            logger.info(f"Processing {len(frames_data)} frames for domain captions")
 
-            # Create text embedding index for domain captions
-            logger.info(f"Creating text embedding index for domain captions column '{column_name}'")
-            frames_view.add_embedding_index(
-                column=getattr(frames_view, column_name),
-                string_embed=embeddings.using(model=settings.TEXT_EMBEDDING_MODEL),
-                if_exists="replace_force",
-            )
+            # Process each frame manually with direct API calls
+            domain_captions = {}
+            for i, frame_data in enumerate(frames_data):
+                try:
+                    frame_image = frame_data['resized_frame']
+                    pos_msec = frame_data['pos_msec']
+
+                    # Generate caption using direct API call
+                    caption = self._generate_domain_caption(frame_image, domain_context)
+                    domain_captions[pos_msec] = caption
+
+                    if (i + 1) % 5 == 0:  # Log every 5 frames
+                        logger.info(f"Processed {i + 1}/{len(frames_data)} frames for domain captions")
+
+                except Exception as e:
+                    logger.warning(f"Failed to generate caption for frame at {pos_msec}: {e}")
+                    domain_captions[pos_msec] = f"Domain caption unavailable: {str(e)[:50]}"
+
+            # Store domain captions in registry for search access
+            # This avoids Pixeltable UDF and embedding issues
+            from quadrag.video.registry import update_domain_captions
+            update_domain_captions(video_id, domain_captions, domain_context)
+
+            logger.info(f"Stored {len(domain_captions)} domain captions in registry")
 
             # Update the domain view to indicate domain context is set
             domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
