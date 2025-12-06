@@ -331,8 +331,9 @@ class VideoIndexer:
                 update_domain_view(video_id, domain_view_name)
                 return True
 
-            # Create domain-specific captions using synchronous UDF
-            from quadrag.video.functions import describe_image_with_domain
+            # Set the global domain context for the UDF
+            from quadrag.video.functions import describe_image_with_domain, _current_domain_context
+            _current_domain_context = domain_context
 
             # Create column name for this session's domain captions
             column_name = f"domain_caption_{session_id[:8]}"
@@ -340,7 +341,7 @@ class VideoIndexer:
             # Add domain caption column using synchronous UDF
             logger.info(f"Adding domain caption column '{column_name}' using synchronous OpenAI Vision API")
             frames_view.add_computed_column(
-                **{column_name: describe_image_with_domain(frames_view.resized_frame, domain_context)},
+                **{column_name: describe_image_with_domain(frames_view.resized_frame)},
                 if_exists="ignore",
             )
 

@@ -1,10 +1,15 @@
 """Pixeltable UDF functions for video processing."""
 
+import asyncio
 import base64
 from io import BytesIO
 import pixeltable as pxt
 from PIL import Image
 import openai
+from concurrent.futures import ThreadPoolExecutor
+
+# Global variable for domain context (set before UDF execution)
+_current_domain_context = "general video analysis"
 
 
 @pxt.udf
@@ -98,25 +103,20 @@ def describe_image(image: pxt.type_system.Image) -> str:
 
 
 @pxt.udf
-def describe_image_with_domain(image: pxt.type_system.Image, domain_context: str) -> str:
+def describe_image_with_domain(image: pxt.type_system.Image) -> str:
     """
     Generate a domain-specific description of an image using OpenAI's Vision API.
 
-    This creates captions tailored to the user's domain context (e.g., "cooking tutorial",
-    "sports analysis", "medical procedure").
-
-    Args:
-        image: PIL Image to describe
-        domain_context: User's domain context for contextual captions
-
-    Returns:
-        str: Domain-specific description of the image content
+    Uses the globally set domain context for contextual captions.
     """
+    global _current_domain_context
+
     try:
-        # Validate inputs
+        # Validate input
         if image is None:
             return "Invalid image: None provided"
 
+        domain_context = _current_domain_context
         if not domain_context or not isinstance(domain_context, str):
             return "Invalid domain context provided"
 
@@ -125,11 +125,10 @@ def describe_image_with_domain(image: pxt.type_system.Image, domain_context: str
         image.save(buffer, format="PNG")
         img_base64 = base64.b64encode(buffer.getvalue()).decode()
 
-        # Validate base64 encoding
         if not img_base64:
             return "Failed to encode image"
 
-        # Create OpenAI client (will use environment variable OPENAI_API_KEY)
+        # Create OpenAI client
         client = openai.OpenAI()
 
         # Create domain-specific prompt
@@ -152,21 +151,19 @@ Be detailed about objects, actions, and visual elements that would be important 
             temperature=0.3
         )
 
-        # Validate response
-        if not response or not response.choices or len(response.choices) == 0:
-            return f"No response from vision API for {domain_context}"
-
-        description = response.choices[0].message.content
-        if description and isinstance(description, str):
-            description = description.strip()
-            # Ensure we return a non-empty string
-            return description if len(description) > 0 else f"Empty description from API for {domain_context}"
+        # Process response
+        if response and response.choices and len(response.choices) > 0:
+            description = response.choices[0].message.content
+            if description and isinstance(description, str):
+                description = description.strip()
+                return description if description else f"Empty description from API for {domain_context}"
+            else:
+                return f"Invalid response format from vision API for {domain_context}"
         else:
-            return f"Invalid response format from vision API for {domain_context}"
+            return f"No response from vision API for {domain_context}"
 
     except Exception as e:
         # Return a safe fallback instead of raising an exception
-        # This prevents the entire indexing process from failing
-        error_msg = str(e)[:100]  # Truncate long error messages
+        error_msg = str(e)[:100]
         return f"Domain description unavailable ({domain_context}): {error_msg}"
 
