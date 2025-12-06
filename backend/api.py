@@ -50,6 +50,17 @@ except ImportError as e:
     _numpy_path = f"IMPORT_FAILED: {e}"
     _numpy_version = "N/A"
 
+# Step 4: Set up API keys for Pixeltable BEFORE any Pixeltable imports
+# This ensures transcription functions have access to the API keys
+try:
+    from quadrag.config import get_settings
+    _early_settings = get_settings()
+    os.environ["OPENAI_API_KEY"] = _early_settings.OPENAI_API_KEY or ""
+    os.environ["GOOGLE_API_KEY"] = _early_settings.GOOGLE_API_KEY or ""
+    logger.info("API keys configured for Pixeltable")
+except Exception as e:
+    logger.warning(f"Could not configure API keys early: {e}")
+
 # Step 4: Restore working directory (but keep sys.path clean)
 os.chdir(_original_cwd)
 

@@ -1,73 +1,84 @@
 #!/usr/bin/env python3
-"""
-Test script to verify audio search functionality.
-Run this locally to test if transcriptions are being stored and retrieved properly.
-"""
+"""Test script to debug audio transcription issues."""
 
-import sys
 import os
-sys.path.insert(0, 'backend')
+import sys
 
-def test_audio_search():
-    """Test if audio search can retrieve transcriptions."""
+# Add backend to path
+sys.path.insert(0, 'backend/src')
+
+def test_transcription():
+    """Test transcription computation."""
     try:
-        # Import required modules
-        from quadrag.video.registry import get_all_videos
-        from quadrag.retrieval.search_engine import SearchEngine
-        import logging
+        import pixeltable as pxt
+        from quadrag.config import get_settings
+        from quadrag.video.registry import get_video_from_registry
 
-        # Set up logging
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger(__name__)
+        settings = get_settings()
+        print(f"OPENAI_API_KEY set: {bool(settings.OPENAI_API_KEY)}")
+        print(f"GROQ_API_KEY set: {bool(settings.GROQ_API_KEY)}")
 
-        # Get all registered videos
-        videos = get_all_videos()
-        logger.info(f"Found {len(videos)} registered videos")
+        # Initialize Pixeltable
+        pxt.init()
 
-        if not videos:
-            logger.error("No videos registered. Please upload and process a video first.")
-            return False
+        # Get video info
+        video_id = "d8ac7c2b-80a5-4808-b26f-154f3479a157"
+        video_info = get_video_from_registry(video_id)
 
-        # Test each video
-        for video_id, video_info in videos.items():
-            logger.info(f"\nTesting video: {video_id}")
-            logger.info(f"  Audio view: {video_info.audio_view_name}")
-            logger.info(f"  Video table: {video_info.video_table_name}")
+        if not video_info:
+            print(f"Video {video_id} not found")
+            return
 
-            # Create search engine
-            search_engine = SearchEngine(video_id)
+        print(f"Video found: {video_info.video_id}")
+        print(f"Audio view name: {video_info.audio_view_name}")
 
-            # Test audio search
+        # Try to access audio view
+        try:
+            audio_view = video_info.audio_view
+            print("Audio view accessible")
+
+            # Check if transcription column exists
             try:
-                results = search_engine.search_audio_index("test query")
-                logger.info(f"  Audio search returned {len(results)} results")
+                _ = audio_view.transcription
+                print("✓ Transcription column exists")
+            except AttributeError:
+                print("✗ Transcription column missing")
 
-                if results:
-                    logger.info("  ✅ Audio search working!")
-                    for i, result in enumerate(results[:3]):  # Show first 3 results
-                        logger.info(f"    Result {i+1}: '{result.content[:100]}...' at {result.timestamp:.1f}s")
-                    return True
-                else:
-                    logger.warning("  ⚠️ Audio search returned no results")
+            try:
+                _ = audio_view.transcript_text
+                print("✓ Transcript text column exists")
+            except AttributeError:
+                print("✗ Transcript text column missing")
 
-            except Exception as e:
-                logger.error(f"  ❌ Audio search failed: {e}")
-                import traceback
-                logger.debug(f"Traceback: {traceback.format_exc()}")
+            # Try to collect a few chunks
+            print("Collecting audio chunks...")
+            chunks = audio_view.select(
+                audio_view.start_time_sec,
+                audio_view.end_time_sec,
+                audio_view.transcription,
+                audio_view.transcript_text,
+            ).limit(3).collect()
 
-        return False
+            print(f"Collected {len(chunks)} chunks")
+
+            for i, chunk in enumerate(chunks):
+                raw_transcript = chunk.get("transcription", "")
+                text_transcript = chunk.get("transcript_text", "")
+                start_time = chunk.get("start_time_sec", 0)
+
+                print(f"\nChunk {i} (start: {start_time}s):")
+                print(f"  Raw transcription: {str(raw_transcript)[:200]}...")
+                print(f"  Text transcription: '{str(text_transcript)[:200]}'...")
+
+        except Exception as e:
+            print(f"Error accessing audio view: {e}")
+            import traceback
+            traceback.print_exc()
 
     except Exception as e:
-        logger.error(f"Test failed: {e}")
+        print(f"Error: {e}")
         import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        return False
+        traceback.print_exc()
 
 if __name__ == "__main__":
-    print("Testing audio search functionality...")
-    success = test_audio_search()
-    if success:
-        print("✅ Audio search test PASSED")
-    else:
-        print("❌ Audio search test FAILED")
-    sys.exit(0 if success else 1)
+    test_transcription()

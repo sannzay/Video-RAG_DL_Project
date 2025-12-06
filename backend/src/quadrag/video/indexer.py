@@ -30,8 +30,7 @@ class VideoIndexer:
         self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
         genai.configure(api_key=settings.GOOGLE_API_KEY)
         
-        # Configure OpenAI API key for Pixeltable
-        # Pixeltable needs the API key in environment or config
+        # OpenAI API key should already be set at module level in api.py
         os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
 
     def create_image_index(self, video_id: str) -> bool:
