@@ -566,54 +566,47 @@ async def set_domain_context(request: DomainContextRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def _search_and_fuse_async(video_id: str, session_id: str, query: str, domain_context: Optional[str]):
-    """Async search and fusion function.
-    
+def _search_and_fuse_sync(video_id: str, session_id: str, query: str, domain_context: Optional[str]):
+    """Synchronous search and fusion function that Pixeltable can handle.
+
     Args:
         video_id: Video identifier
         session_id: Session identifier
         query: Search query
         domain_context: Optional domain context
-        
+
     Returns:
         Fused results
     """
-    # Wrap Pixeltable operations in a task to ensure proper async context
-    async def _run_search_ops():
+    try:
         # Initialize search engine
-        VideoSearchEngineClass = get_video_search_engine()
-        search_engine = VideoSearchEngineClass(video_id, session_id)
-        
+        from quadrag.retrieval.search_engine import VideoSearchEngine
+        search_engine = VideoSearchEngine(video_id, session_id)
+
         # Search all indexes
         search_results = search_engine.search_all_indexes(
             query_text=query,
             use_domain=domain_context is not None,
         )
-        
+
+        # Debug: Log search results
+        total_results = sum(len(results) for results in search_results.values())
+        print(f"DEBUG: Search completed - total results: {total_results}")
+        for index_type, results in search_results.items():
+            print(f"DEBUG: {index_type.value}: {len(results)} results")
+
         # Fuse results
-        fused_results = get_fusion_lazy().fuse_results(search_results)
-        
+        from quadrag.retrieval.fusion import get_fusion
+        fusion = get_fusion()
+        fused_results = fusion.fuse_results(search_results)
+
+        print(f"DEBUG: Fused results: {len(fused_results)}")
         return fused_results
-    
-    # Run search operations as a task to ensure proper context
-    task = asyncio.create_task(_run_search_ops())
-    return await task
-
-
-def _search_and_fuse_sync(video_id: str, session_id: str, query: str, domain_context: Optional[str]):
-    """Synchronous wrapper that runs async function in new event loop.
-    
-    Args:
-        video_id: Video identifier
-        session_id: Session identifier
-        query: Search query
-        domain_context: Optional domain context
-        
-    Returns:
-        Fused results
-    """
-    # Use asyncio.run() which properly sets up the event loop and task context
-    return asyncio.run(_search_and_fuse_async(video_id, session_id, query, domain_context))
+    except Exception as e:
+        logger.error(f"Error in search and fusion: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -633,8 +626,11 @@ async def chat(request: ChatRequest):
         if not get_video_processor().video_exists(request.video_id):
             raise HTTPException(status_code=404, detail="Video not found or not processed")
 
-        # Run search and fusion directly in async context (Pixeltable needs same thread)
-        fused_results = await _search_and_fuse_async(
+        # Run search and fusion in thread pool to avoid blocking
+        loop = asyncio.get_event_loop()
+        fused_results = await loop.run_in_executor(
+            executor,
+            _search_and_fuse_sync,
             request.video_id,
             request.session_id,
             request.query,
