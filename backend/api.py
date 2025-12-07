@@ -56,13 +56,19 @@ import asyncio
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())  # Use standard asyncio, not uvloop
 print("INFO: Set asyncio event loop policy to DefaultEventLoopPolicy")
 
-# Step 5: Initialize Pixeltable with standard asyncio event loop
-try:
-    import pixeltable as pxt
-    pxt.init()  # Initialize Pixeltable with standard asyncio event loop
-    print("INFO: Pixeltable initialized successfully")
-except Exception as e:
-    print(f"WARNING: Could not initialize Pixeltable: {e}")
+# Step 5: Defer Pixeltable initialization until needed to avoid asyncio conflicts
+_pixeltable_initialized = False
+def _ensure_pixeltable():
+    global _pixeltable_initialized
+    if not _pixeltable_initialized:
+        try:
+            import pixeltable as pxt
+            pxt.init()  # Initialize Pixeltable when first needed
+            _pixeltable_initialized = True
+            print("INFO: Pixeltable initialized successfully (lazy)")
+        except Exception as e:
+            print(f"WARNING: Could not initialize Pixeltable: {e}")
+            raise
 
 # Step 6: Set up API keys for Pixeltable
 try:
@@ -301,17 +307,25 @@ async def process_video_background(video_id: str, video_path: str):
             processing_errors[video_id] = f"Transcoding failed: {str(e)}"
             return
 
-        # Now start the actual video processing
+        # Now start the actual video processing - run synchronously in separate thread
         logger.info(f"Starting video indexing for {video_id}")
 
-        # Run Pixeltable operations in a separate thread to avoid asyncio conflicts
-        import asyncio
-        import concurrent.futures
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            await loop.run_in_executor(executor, _process_video_sync, video_id, domain_context, session_id)
+        # Run Pixeltable operations in a daemon thread to avoid asyncio conflicts
+        import threading
+        def sync_processing():
+            try:
+                _process_video_sync(video_id, domain_context, session_id)
+                logger.info(f"Background task completed successfully for video {video_id}")
+            except Exception as e:
+                logger.error(f"Background processing failed for {video_id}: {e}")
+                import traceback
+                logger.error(f"Background processing traceback: {traceback.format_exc()}")
+                processing_status[video_id] = ProcessingStatus.FAILED
+                processing_errors[video_id] = str(e)
 
-        logger.info(f"Background task completed successfully for video {video_id}")
+        # Start as daemon thread - will not prevent server shutdown
+        processing_thread = threading.Thread(target=sync_processing, daemon=True)
+        processing_thread.start()
 
     except Exception as e:
         logger.error(f"Background processing failed for {video_id}: {e}")

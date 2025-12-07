@@ -43,6 +43,14 @@ class VideoProcessor:
         Raises:
             ValueError: If video processing fails
         """
+        # Ensure Pixeltable is initialized before any operations
+        try:
+            from ...api import _ensure_pixeltable
+            _ensure_pixeltable()
+        except ImportError:
+            # If we're not in the API context, Pixeltable should already be initialized
+            pass
+
         try:
             # Check if video already exists
             if video_exists_in_registry(video_id):
