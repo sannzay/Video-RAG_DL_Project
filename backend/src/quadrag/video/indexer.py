@@ -189,14 +189,21 @@ class VideoIndexer:
             except AttributeError:
                 # Column doesn't exist, add it
                 logger.info("Adding new transcription column...")
-                audio_view.add_computed_column(
-                    transcription=pxt_openai.transcriptions(
-                        audio=audio_view.audio_chunk,
-                        model=settings.AUDIO_TRANSCRIPT_MODEL,
-                    ),
-                    if_exists="ignore",
-                )
-                logger.info("Transcription column added successfully (will compute on-demand)")
+                print(f"DEBUG: About to add transcription column for {len(audio_chunks)} chunks")
+                try:
+                    audio_view.add_computed_column(
+                        transcription=pxt_openai.transcriptions(
+                            audio=audio_view.audio_chunk,
+                            model=settings.AUDIO_TRANSCRIPT_MODEL,
+                        ),
+                        if_exists="ignore",
+                    )
+                    print("DEBUG: Transcription column added successfully")
+                    logger.info("Transcription column added successfully (will compute on-demand)")
+                except Exception as e:
+                    print(f"DEBUG: Failed to add transcription column: {e}")
+                    logger.error(f"Failed to add transcription column: {e}")
+                    raise
 
             # Extract text from transcription
             # Check if column already exists
@@ -205,33 +212,22 @@ class VideoIndexer:
                 logger.info("Transcript text column already exists, skipping addition")
             except AttributeError:
                 logger.info("Adding text extraction column...")
-                audio_view.add_computed_column(
-                    transcript_text=extract_text_from_chunk(audio_view.transcription),
-                    if_exists="ignore",
-                )
-                logger.info("Text extraction column added successfully (will compute on-demand)")
+                print("DEBUG: About to add text extraction column")
+                try:
+                    audio_view.add_computed_column(
+                        transcript_text=extract_text_from_chunk(audio_view.transcription),
+                        if_exists="ignore",
+                    )
+                    print("DEBUG: Text extraction column added successfully")
+                    logger.info("Text extraction column added successfully (will compute on-demand)")
+                except Exception as e:
+                    print(f"DEBUG: Failed to add text extraction column: {e}")
+                    logger.error(f"Failed to add text extraction column: {e}")
+                    raise
 
-            # Force computation of transcriptions now to avoid lazy loading issues during search
-            logger.info("Pre-computing transcriptions to ensure they are available for search...")
-            try:
-                # Collect all chunks to force transcription computation
-                all_chunks = audio_view.select(
-                    audio_view.start_time_sec,
-                    audio_view.end_time_sec,
-                    audio_view.transcript_text,
-                ).collect()
-
-                logger.info(f"Successfully pre-computed {len(all_chunks)} transcriptions")
-                for i, chunk in enumerate(all_chunks):
-                    transcription = str(chunk.get("transcript_text", ""))
-                    if transcription.strip():
-                        logger.debug(f"Chunk {i}: '{transcription[:100]}...'")
-                    else:
-                        logger.warning(f"Chunk {i} has empty transcription")
-
-            except Exception as e:
-                logger.warning(f"Failed to pre-compute transcriptions: {e}")
-                logger.info("Transcriptions will be computed lazily during search")
+            # Skip pre-computation to avoid blocking - transcriptions will be computed lazily during search
+            logger.info("Skipping pre-computation of transcriptions - will compute lazily during search")
+            print("DEBUG: Skipping transcription pre-computation to avoid blocking")
 
             # Skip embedding index creation to avoid blocking
             # Embedding index creation would require all transcriptions to be computed first
