@@ -605,11 +605,15 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
         else:
             logger.info(f"Skipping Description Index (requires Image Index)")
 
-        # Create Domain Index if domain context and session_id are provided
-        if domain_context and session_id and IndexType.IMAGE in indexes_created_list:
-            logger.info(f"Creating Domain Index for {video_id} with context: {domain_context}")
+        # Create Domain Index (always create with default context if Image Index succeeded)
+        if IndexType.IMAGE in indexes_created_list:
+            # Use provided context or default to general video analysis
+            effective_domain_context = domain_context or "general video content analysis"
+            effective_session_id = session_id or f"default_{video_id[:8]}"
+
+            logger.info(f"Creating Domain Index for {video_id} with context: {effective_domain_context}")
             try:
-                if get_indexer_lazy().create_domain_index(video_id, session_id, domain_context):
+                if get_indexer_lazy().create_domain_index(video_id, effective_session_id, effective_domain_context):
                     indexes_created_list.append(IndexType.DOMAIN)
                     logger.info(f"Domain Index created successfully for {video_id}")
                 else:
@@ -620,10 +624,8 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
                 error_msg = f"Domain index creation error: {str(e)[:200]}"
                 set_index_error(video_id, IndexType.DOMAIN, error_msg)
                 logger.error(f"Domain Index creation failed for {video_id}: {error_msg}")
-        elif domain_context and session_id:
+        else:
             logger.info(f"Skipping Domain Index (requires Image Index)")
-        elif domain_context or session_id:
-            logger.info(f"Domain context provided but missing session_id or vice versa, skipping Domain Index")
 
     # Run Pixeltable operations as a task to ensure proper context
     task = asyncio.create_task(_run_pixeltable_ops())
