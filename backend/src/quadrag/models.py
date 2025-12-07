@@ -57,6 +57,7 @@ class VideoStatusResponse(BaseModel):
     status: ProcessingStatus
     indexes_created: list[IndexType]
     error_message: Optional[str] = None
+    index_errors: dict[IndexType, str] = Field(default_factory=dict)
 
 
 class RetrievalResult(BaseModel):

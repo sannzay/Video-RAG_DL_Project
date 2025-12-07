@@ -126,6 +126,27 @@ def test_chat(video_id: str, session_id: str, query: str, domain_context: str = 
         return False
 
 
+def test_reprocess_video(video_id: str):
+    """Test video re-processing."""
+    print(f"Testing video re-processing for: {video_id}")
+
+    response = requests.post(
+        f"{API_BASE_URL}/reprocess-video",
+        json={"video_id": video_id}
+    )
+
+    print(f"Status: {response.status_code}")
+    if response.status_code == 200:
+        data = response.json()
+        print(f"Status: {data['status']}")
+        print(f"Message: {data['message']}")
+        print("✅ Video re-processing started\n")
+        return True
+    else:
+        print(f"❌ Video re-processing failed: {response.text}\n")
+        return False
+
+
 def main():
     """Run all tests."""
     print("=" * 60)

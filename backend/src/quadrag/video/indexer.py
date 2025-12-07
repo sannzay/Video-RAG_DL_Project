@@ -136,7 +136,7 @@ class VideoIndexer:
             # Extract audio
             logger.info("Extracting audio from video")
             video_table.add_computed_column(
-                audio_extract=extract_audio(video_table.video, format="mp3"),
+                audio_extract=extract_audio(video_table.video, format="wav"),  # Use WAV for better Whisper compatibility
                 if_exists="ignore",
             )
 

@@ -135,6 +135,7 @@ executor = ThreadPoolExecutor(max_workers=2)
 processing_status: Dict[str, ProcessingStatus] = {}
 processing_errors: Dict[str, str] = {}
 video_indexes: Dict[str, list[IndexType]] = {}
+index_errors: Dict[str, Dict[IndexType, str]] = {}  # Track specific index creation errors
 
 # Processing lock to prevent concurrent Pixeltable operations
 processing_lock = asyncio.Lock()
@@ -357,6 +358,56 @@ async def process_video(request: VideoProcessRequest):
         )
 
 
+@app.post("/reprocess-video", response_model=VideoProcessResponse)
+async def reprocess_video(request: VideoProcessRequest):
+    """Re-process a video to retry failed indexes.
+
+    Args:
+        request: Video process request with video_id
+
+    Returns:
+        VideoProcessResponse with processing status
+    """
+    try:
+        video_id = request.video_id
+
+        if video_id not in processing_status:
+            raise HTTPException(status_code=404, detail="Video not found")
+
+        # Check if video exists in registry
+        video_info = get_video_from_registry(video_id)
+        if not video_info:
+            raise HTTPException(status_code=404, detail="Video not found in registry")
+
+        # Reset processing status to allow re-processing
+        processing_status[video_id] = ProcessingStatus.PROCESSING
+        # Clear previous errors
+        if video_id in processing_errors:
+            del processing_errors[video_id]
+        if video_id in index_errors:
+            del index_errors[video_id]
+        # Keep existing video_indexes to preserve successful indexes
+
+        logger.info(f"Re-processing video {video_id}")
+
+        # Start re-processing in background
+        asyncio.create_task(_process_video_background(video_id, request.domain_context, request.session_id))
+
+        return VideoProcessResponse(
+            video_id=video_id,
+            status=ProcessingStatus.PROCESSING,
+            message="Video re-processing started",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting video re-processing: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to start re-processing: {str(e)}"
+        )
+
+
 async def _process_video_async(video_id: str, domain_context: Optional[str] = None, session_id: Optional[str] = None):
     """Async video processing function (runs in event loop).
 
@@ -387,41 +438,72 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
         logger.info(f"Processing video: {video_path}")
         get_video_processor().process_video(video_id, video_path)
 
+        # Initialize index errors tracking for this video
+        index_errors[video_id] = {}
+
         # Create Audio Index (prioritize this over image index due to PyTorch compatibility issues)
         logger.info(f"Creating Audio Index for {video_id}")
-        if get_indexer_lazy().create_audio_index(video_id):
-            indexes_created_list.append(IndexType.AUDIO)
-            logger.info(f"Audio Index created successfully for {video_id}")
-        else:
-            logger.warning(f"Audio Index creation failed for {video_id}")
+        try:
+            if get_indexer_lazy().create_audio_index(video_id):
+                indexes_created_list.append(IndexType.AUDIO)
+                logger.info(f"Audio Index created successfully for {video_id}")
+            else:
+                error_msg = "Audio index creation failed - audio format may be incompatible with transcription service"
+                index_errors[video_id][IndexType.AUDIO] = error_msg
+                logger.warning(f"Audio Index creation failed for {video_id}: {error_msg}")
+        except Exception as e:
+            error_msg = f"Audio index creation error: {str(e)[:200]}"
+            index_errors[video_id][IndexType.AUDIO] = error_msg
+            logger.error(f"Audio Index creation failed for {video_id}: {error_msg}")
 
         # Create Image Index
         logger.info(f"Creating Image Index for {video_id}")
-        if get_indexer_lazy().create_image_index(video_id):
-            indexes_created_list.append(IndexType.IMAGE)
-            logger.info(f"Image Index created successfully for {video_id}")
-        else:
-            logger.warning(f"Image Index creation failed for {video_id}")
+        try:
+            if get_indexer_lazy().create_image_index(video_id):
+                indexes_created_list.append(IndexType.IMAGE)
+                logger.info(f"Image Index created successfully for {video_id}")
+            else:
+                error_msg = "Image index creation failed - video frame extraction issue"
+                index_errors[video_id][IndexType.IMAGE] = error_msg
+                logger.warning(f"Image Index creation failed for {video_id}: {error_msg}")
+        except Exception as e:
+            error_msg = f"Image index creation error: {str(e)[:200]}"
+            index_errors[video_id][IndexType.IMAGE] = error_msg
+            logger.error(f"Image Index creation failed for {video_id}: {error_msg}")
 
         # Create Description Index (only if Image Index succeeded, as it depends on resized_frame)
         if IndexType.IMAGE in indexes_created_list:
             logger.info(f"Creating Description Index for {video_id}")
-            if get_indexer_lazy().create_description_index(video_id):
-                indexes_created_list.append(IndexType.DESCRIPTION)
-                logger.info(f"Description Index created successfully for {video_id}")
-            else:
-                logger.warning(f"Description Index creation failed for {video_id}")
+            try:
+                if get_indexer_lazy().create_description_index(video_id):
+                    indexes_created_list.append(IndexType.DESCRIPTION)
+                    logger.info(f"Description Index created successfully for {video_id}")
+                else:
+                    error_msg = "Description index creation failed - vision API issue"
+                    index_errors[video_id][IndexType.DESCRIPTION] = error_msg
+                    logger.warning(f"Description Index creation failed for {video_id}: {error_msg}")
+            except Exception as e:
+                error_msg = f"Description index creation error: {str(e)[:200]}"
+                index_errors[video_id][IndexType.DESCRIPTION] = error_msg
+                logger.error(f"Description Index creation failed for {video_id}: {error_msg}")
         else:
             logger.info(f"Skipping Description Index (requires Image Index)")
 
         # Create Domain Index if domain context and session_id are provided
         if domain_context and session_id and IndexType.IMAGE in indexes_created_list:
             logger.info(f"Creating Domain Index for {video_id} with context: {domain_context}")
-            if get_indexer_lazy().create_domain_index(video_id, session_id, domain_context):
-                indexes_created_list.append(IndexType.DOMAIN)
-                logger.info(f"Domain Index created successfully for {video_id}")
-            else:
-                logger.warning(f"Domain Index creation failed for {video_id}")
+            try:
+                if get_indexer_lazy().create_domain_index(video_id, session_id, domain_context):
+                    indexes_created_list.append(IndexType.DOMAIN)
+                    logger.info(f"Domain Index created successfully for {video_id}")
+                else:
+                    error_msg = "Domain index creation failed - vision API or context issue"
+                    index_errors[video_id][IndexType.DOMAIN] = error_msg
+                    logger.warning(f"Domain Index creation failed for {video_id}: {error_msg}")
+            except Exception as e:
+                error_msg = f"Domain index creation error: {str(e)[:200]}"
+                index_errors[video_id][IndexType.DOMAIN] = error_msg
+                logger.error(f"Domain Index creation failed for {video_id}: {error_msg}")
         elif domain_context and session_id:
             logger.info(f"Skipping Domain Index (requires Image Index)")
         elif domain_context or session_id:
@@ -515,6 +597,7 @@ async def get_video_status(video_id: str):
             status=status,
             indexes_created=indexes_created,
             error_message=error_message,
+            index_errors=index_errors.get(video_id, {}),
         )
 
     except Exception as e:
@@ -648,6 +731,7 @@ async def debug_status():
         "processing_status": {k: str(v) for k, v in processing_status.items()},
         "video_indexes": {k: [str(idx) for idx in v] for k, v in video_indexes.items()},
         "processing_errors": processing_errors,
+        "index_errors": index_errors,
         "registry_videos": list(get_all_videos().keys()) if get_all_videos else []
     }
 

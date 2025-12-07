@@ -657,7 +657,8 @@ def show_video_library():
                 status_data = status_response.json()
                 api_status = status_data["status"]
                 indexes = status_data.get("indexes_created", [])
-                
+                index_errors = status_data.get("index_errors", {})
+
                 # Convert indexes to strings for comparison
                 index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
                 
@@ -762,7 +763,37 @@ def show_video_library():
             </div>
         </div>
         """, unsafe_allow_html=True)
-        
+
+        # Show index errors if any
+        if index_errors and any(idx in index_errors for idx in all_possible_indexes):
+            st.sidebar.markdown("**Index Errors:**")
+            for idx_name in all_possible_indexes:
+                if idx_name in index_errors:
+                    with st.sidebar.expander(f"❌ {idx_name} Error", expanded=False):
+                        st.error(index_errors[idx_name][:500] + ("..." if len(index_errors[idx_name]) > 500 else ""))
+
+            # Re-process button for failed indexes
+            if st.sidebar.button(f"🔄 Re-process Video", key=f"reprocess_{video_id}", help="Retry creating failed indexes"):
+                try:
+                    current_url = get_api_base_url()
+                    process_payload = {"video_id": video_id}
+                    if st.session_state.get("domain_context"):
+                        process_payload["domain_context"] = st.session_state.domain_context
+                        process_payload["session_id"] = st.session_state.session_id
+
+                    response = requests.post(
+                        f"{current_url}/reprocess-video",
+                        json=process_payload,
+                        timeout=30
+                    )
+                    if response.status_code == 200:
+                        st.sidebar.success("🔄 Re-processing started!")
+                        st.rerun()
+                    else:
+                        st.sidebar.error(f"Failed to start re-processing: {response.status_code}")
+                except Exception as e:
+                    st.sidebar.error(f"Re-processing failed: {str(e)}")
+
         # Select button - only show if all required indexes are ready
         if not is_active:
             has_required_indexes = all(idx in index_names for idx in required_indexes)
