@@ -365,19 +365,9 @@ async def upload_video(file: UploadFile = File(...)):
         processing_status[video_id] = ProcessingStatus.PROCESSING
         logger.info(f"Starting background processing for video {video_id}")
 
-        # Use asyncio.create_task in a fire-and-forget manner, but ensure proper exception handling
-        task = asyncio.create_task(process_video_background(video_id, str(file_path)))
-        # Don't await the task - let it run in background
-        # Add callback to handle any unhandled exceptions
-        def handle_task_exception(task):
-            try:
-                task.result()  # This will raise any exception that occurred
-            except Exception as e:
-                logger.error(f"Background task for video {video_id} failed: {e}")
-                processing_status[video_id] = ProcessingStatus.FAILED
-                processing_errors[video_id] = f"Background processing failed: {str(e)}"
-
-        task.add_done_callback(handle_task_exception)
+        # Use background_tasks.add_task instead of asyncio.create_task
+        # This is the proper way to run background tasks in FastAPI
+        background_tasks.add_task(process_video_background, video_id, str(file_path))
 
         logger.info(f"Video uploaded successfully: {file_path}")
 

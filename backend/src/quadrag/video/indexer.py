@@ -189,7 +189,7 @@ class VideoIndexer:
             except AttributeError:
                 # Column doesn't exist, add it
                 logger.info("Adding new transcription column...")
-                print(f"DEBUG: About to add transcription column for {len(audio_chunks)} chunks")
+                print("DEBUG: About to add transcription column")
                 try:
                     audio_view.add_computed_column(
                         transcription=pxt_openai.transcriptions(
