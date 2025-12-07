@@ -17,6 +17,7 @@ from pixeltable.iterators import AudioSplitter
 from pixeltable.iterators.video import FrameIterator
 
 from quadrag.config import get_settings
+from quadrag.utils import calculate_frame_count, monitor_processing
 from quadrag.video.functions import extract_text_from_chunk, resize_image
 from quadrag.video.registry import get_video_from_registry, update_domain_view
 
@@ -53,39 +54,56 @@ class VideoIndexer:
 
             video_table = video_info.video_table
 
-            # Create frames view
+            # Get video duration for adaptive frame sampling
+            video_duration = 0.0
+            try:
+                # Try to get duration from video table metadata if available
+                # Otherwise use utility function (this might be expensive for large videos)
+                from quadrag.utils import get_video_duration
+                video_path = str(video_table.video)
+                video_duration = get_video_duration(video_path)
+                logger.info(f"Video duration: {video_duration:.1f} seconds ({video_duration/3600:.2f} hours)")
+            except Exception as e:
+                logger.warning(f"Could not determine video duration: {e}, using default frame count")
+
+            # Calculate optimal frame count based on video duration
+            optimal_frame_count = calculate_frame_count(video_duration)
+            logger.info(f"Using adaptive frame sampling: {optimal_frame_count} frames for {video_duration:.1f}s video")
+
+            # Create frames view with adaptive sampling
             logger.info(f"Creating frames view: {video_info.frames_view_name}")
             try:
-                logger.info(f"Attempting to create frame iterator with {settings.SPLIT_FRAMES_COUNT} frames")
+                logger.info(f"Attempting to create frame iterator with {optimal_frame_count} frames")
                 logger.info(f"Video file: {video_table.video}")
                 frames_view = pxt.create_view(
                     video_info.frames_view_name,
                     video_table,
                     iterator=FrameIterator.create(
                         video=video_table.video,
-                        num_frames=settings.SPLIT_FRAMES_COUNT
+                        num_frames=optimal_frame_count
                     ),
                     if_exists="replace_force",
                 )
             except Exception as e:
-                logger.error(f"Failed to create frame iterator with {settings.SPLIT_FRAMES_COUNT} frames: {e}")
+                logger.error(f"Failed to create frame iterator with {optimal_frame_count} frames: {e}")
                 logger.error(f"Exception type: {type(e).__name__}")
                 import traceback
                 logger.error(f"Full traceback: {traceback.format_exc()}")
                 # Try with fewer frames as fallback
-                logger.info("Retrying with 10 frames...")
+                fallback_frames = min(30, optimal_frame_count // 2)
+                logger.info(f"Retrying with {fallback_frames} frames...")
                 try:
                     frames_view = pxt.create_view(
                         video_info.frames_view_name,
                         video_table,
                         iterator=FrameIterator.create(
                             video=video_table.video,
-                            num_frames=10
+                            num_frames=fallback_frames
                         ),
                         if_exists="replace_force",
                     )
                 except Exception as e2:
-                    logger.error(f"Failed even with 10 frames: {e2}")
+                    logger.error(f"Failed even with {fallback_frames} frames: {e2}")
                     logger.error(f"Exception type: {type(e2).__name__}")
                     import traceback
                     logger.error(f"Full traceback: {traceback.format_exc()}")
@@ -296,11 +314,12 @@ class VideoIndexer:
         Returns:
             True if successful
         """
-        try:
-            logger.info(
-                f"Creating Domain Index for video {video_id} "
-                f"with context: {domain_context}"
-            )
+        with monitor_processing(f"Domain index creation for {video_id}"):
+            try:
+                logger.info(
+                    f"Creating Domain Index for video {video_id} "
+                    f"with context: {domain_context}"
+                )
             video_info = get_video_from_registry(video_id)
             if not video_info:
                 raise ValueError(f"Video {video_id} not found in registry")
@@ -345,12 +364,25 @@ class VideoIndexer:
 
             logger.info(f"Processing {len(frames_data)} frames for domain captions")
 
-            # Process each frame manually with direct API calls
+            # Process frames in batches to manage memory and API rate limits
             domain_captions = {}
-            for i, frame_data in enumerate(frames_data):
-                try:
-                    frame_image = frame_data['resized_frame']
-                    pos_msec = frame_data['pos_msec']
+            batch_size = 5  # Process 5 frames at a time
+            total_frames = len(frames_data)
+
+            with monitor_processing("Domain index creation"):
+                for batch_start in range(0, total_frames, batch_size):
+                    batch_end = min(batch_start + batch_size, total_frames)
+                    batch_frames = frames_data[batch_start:batch_end]
+
+                    logger.info(f"Processing batch {batch_start//batch_size + 1}/{(total_frames + batch_size - 1)//batch_size}: "
+                               f"frames {batch_start}-{batch_end-1}")
+
+                    # Process each frame in the current batch
+                    for i, frame_data in enumerate(batch_frames):
+                        frame_idx = batch_start + i
+                        try:
+                            frame_image = frame_data['resized_frame']
+                            pos_msec = frame_data['pos_msec']
 
                     # Generate caption using direct API call
                     try:
@@ -402,15 +434,18 @@ Provide a clear, factual description of the visual content."""
 
                     domain_captions[pos_msec] = caption
 
-                    # Log each generated caption
-                    logger.info(f"Frame {pos_msec/1000:.1f}s: {caption[:200]}{'...' if len(caption) > 200 else ''}")
+                            # Log each generated caption
+                            logger.info(f"Frame {pos_msec/1000:.1f}s: {caption[:200]}{'...' if len(caption) > 200 else ''}")
 
-                    if (i + 1) % 5 == 0:  # Log every 5 frames
-                        logger.info(f"Processed {i + 1}/{len(frames_data)} frames for domain captions")
+                        except Exception as e:
+                            logger.warning(f"Failed to generate caption for frame at {pos_msec}: {e}")
+                            domain_captions[pos_msec] = f"Domain caption unavailable: {str(e)[:50]}"
 
-                except Exception as e:
-                    logger.warning(f"Failed to generate caption for frame at {pos_msec}: {e}")
-                    domain_captions[pos_msec] = f"Domain caption unavailable: {str(e)[:50]}"
+                    # Add rate limiting between batches to avoid API limits
+                    if batch_end < total_frames:
+                        logger.info("Rate limiting: waiting 2 seconds before next batch...")
+                        import time
+                        time.sleep(2)
 
             # Store domain captions in registry for search access
             # This avoids Pixeltable UDF and embedding issues

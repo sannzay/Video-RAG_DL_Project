@@ -301,19 +301,31 @@ async def upload_video(file: UploadFile = File(...)):
         # Always transcode video to ensure compatibility with pixeltable/ffmpeg
         from quadrag.utils import validate_video_format, transcode_video
         try:
-            # Validate first for logging
+            # Validate file size and duration first
+            from quadrag.utils import validate_video_size
+            validate_video_size(str(file_path))
+
+            # Validate format for logging
             is_valid = validate_video_format(str(file_path))
             logger.info(f"Video validation result: {'PASSED' if is_valid else 'FAILED'}")
 
             # Always transcode to ensure pixeltable compatibility
             logger.info("Transcoding video to guaranteed compatible format (H.264 Main + AAC)...")
-            transcoded_path = transcode_video(str(file_path))
-            # Replace original with transcoded
-            file_path.unlink()
+
+            # Monitor transcoding resource usage
+            from quadrag.utils import monitor_processing
+            with monitor_processing("Video transcoding"):
+                transcoded_path = transcode_video(str(file_path))
+
+            # Clean up original file after successful transcoding
+            from quadrag.utils import cleanup_processing_files
+            cleanup_processing_files(str(file_path), transcoded_path)
+
+            # Rename transcoded file to original location
             Path(transcoded_path).rename(file_path)
             logger.info("Video transcoded successfully to pixeltable-compatible format")
         except Exception as e:
-            logger.error(f"Video transcoding failed: {e}")
+            logger.error(f"Video processing failed: {e}")
             raise HTTPException(status_code=400, detail=f"Video processing failed: {str(e)}")
 
         processing_status[video_id] = ProcessingStatus.PENDING
@@ -449,10 +461,12 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
     async def _run_pixeltable_ops():
         """Run Pixeltable operations in a proper async task context."""
         nonlocal indexes_created_list
-        
-        # Process video (creates table and inserts video)
-        logger.info(f"Processing video: {video_path}")
-        get_video_processor().process_video(video_id, video_path)
+
+        from quadrag.utils import monitor_processing
+        with monitor_processing(f"Complete video processing for {video_id}"):
+            # Process video (creates table and inserts video)
+            logger.info(f"Processing video: {video_path}")
+            get_video_processor().process_video(video_id, video_path)
 
         # Initialize index errors tracking for this video
         clear_index_errors(video_id)
