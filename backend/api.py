@@ -262,6 +262,59 @@ async def health_check():
     )
 
 
+async def process_video_background(video_id: str, video_path: str):
+    """Background task to transcode and process a video.
+
+    Args:
+        video_id: Video identifier
+        video_path: Path to the uploaded video file
+    """
+    logger.info(f"Background task started for video {video_id}")
+    try:
+        logger.info(f"Starting background transcoding for video {video_id}")
+
+        # Transcode the video first
+        from quadrag.utils import validate_video_format, transcode_video, monitor_processing
+        try:
+            # Validate format for logging
+            is_valid = validate_video_format(video_path)
+            logger.info(f"Video validation result: {'PASSED' if is_valid else 'FAILED'}")
+
+            # Always transcode to ensure pixeltable compatibility
+            logger.info("Transcoding video to guaranteed compatible format (H.264 Main + AAC)...")
+
+            # Monitor transcoding resource usage
+            with monitor_processing("Video transcoding"):
+                transcoded_path = transcode_video(video_path)
+
+            # Clean up original file after successful transcoding
+            from quadrag.utils import cleanup_processing_files
+            cleanup_processing_files(video_path, transcoded_path)
+
+            # Rename transcoded file to original location
+            Path(transcoded_path).rename(video_path)
+            logger.info("Video transcoded successfully to pixeltable-compatible format")
+
+        except Exception as e:
+            logger.error(f"Video transcoding failed for {video_id}: {e}")
+            processing_status[video_id] = ProcessingStatus.FAILED
+            processing_errors[video_id] = f"Transcoding failed: {str(e)}"
+            return
+
+        # Now start the actual video processing
+        logger.info(f"Starting video indexing for {video_id}")
+        await _process_video_async(video_id)
+
+        logger.info(f"Background task completed successfully for video {video_id}")
+
+    except Exception as e:
+        logger.error(f"Background processing failed for video {video_id}: {e}")
+        import traceback
+        logger.error(f"Background processing traceback: {traceback.format_exc()}")
+        processing_status[video_id] = ProcessingStatus.FAILED
+        processing_errors[video_id] = str(e)
+
+
 @app.post("/upload-video", response_model=VideoUploadResponse)
 async def upload_video(file: UploadFile = File(...)):
     """Upload a video file.
@@ -298,25 +351,33 @@ async def upload_video(file: UploadFile = File(...)):
         except Exception as e:
             logger.warning(f"Could not clear extended attributes: {e}")
         
-        # Always transcode video to ensure compatibility with pixeltable/ffmpeg
-        from quadrag.utils import validate_video_format, transcode_video
+        # Quick validation before starting background processing
+        from quadrag.utils import validate_video_size
         try:
-            # Validate first for logging
-            is_valid = validate_video_format(str(file_path))
-            logger.info(f"Video validation result: {'PASSED' if is_valid else 'FAILED'}")
-
-            # Always transcode to ensure pixeltable compatibility
-            logger.info("Transcoding video to guaranteed compatible format (H.264 Main + AAC)...")
-            transcoded_path = transcode_video(str(file_path))
-            # Replace original with transcoded
-            file_path.unlink()
-            Path(transcoded_path).rename(file_path)
-            logger.info("Video transcoded successfully to pixeltable-compatible format")
+            validate_video_size(str(file_path))
+            logger.info("Video size validation passed")
         except Exception as e:
-            logger.error(f"Video transcoding failed: {e}")
-            raise HTTPException(status_code=400, detail=f"Video processing failed: {str(e)}")
+            logger.error(f"Video size validation failed: {e}")
+            raise HTTPException(status_code=400, detail=f"Video validation failed: {str(e)}")
 
-        processing_status[video_id] = ProcessingStatus.PENDING
+        # Start background processing (transcoding + indexing) asynchronously
+        # This prevents the upload request from timing out on large videos
+        processing_status[video_id] = ProcessingStatus.PROCESSING
+        logger.info(f"Starting background processing for video {video_id}")
+
+        # Use asyncio.create_task in a fire-and-forget manner, but ensure proper exception handling
+        task = asyncio.create_task(process_video_background(video_id, str(file_path)))
+        # Don't await the task - let it run in background
+        # Add callback to handle any unhandled exceptions
+        def handle_task_exception(task):
+            try:
+                task.result()  # This will raise any exception that occurred
+            except Exception as e:
+                logger.error(f"Background task for video {video_id} failed: {e}")
+                processing_status[video_id] = ProcessingStatus.FAILED
+                processing_errors[video_id] = f"Background processing failed: {str(e)}"
+
+        task.add_done_callback(handle_task_exception)
 
         logger.info(f"Video uploaded successfully: {file_path}")
 
@@ -449,10 +510,12 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
     async def _run_pixeltable_ops():
         """Run Pixeltable operations in a proper async task context."""
         nonlocal indexes_created_list
-        
-        # Process video (creates table and inserts video)
-        logger.info(f"Processing video: {video_path}")
-        get_video_processor().process_video(video_id, video_path)
+
+        from quadrag.utils import monitor_processing
+        with monitor_processing(f"Complete video processing for {video_id}"):
+            # Process video (creates table and inserts video)
+            logger.info(f"Processing video: {video_path}")
+            get_video_processor().process_video(video_id, video_path)
 
         # Initialize index errors tracking for this video
         clear_index_errors(video_id)
@@ -534,6 +597,7 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
         processing_status[video_id] = ProcessingStatus.COMPLETED
         video_indexes[video_id] = indexes_created_list
         logger.info(f"Successfully processed video {video_id} with indexes: {indexes_created_list}")
+        logger.info(f"Status updated to COMPLETED for video {video_id}, current status: {processing_status.get(video_id)}")
     else:
         processing_status[video_id] = ProcessingStatus.FAILED
         processing_errors[video_id] = "All index creation failed"
@@ -576,6 +640,8 @@ async def get_video_status(video_id: str):
     try:
         status = processing_status.get(video_id, ProcessingStatus.PENDING)
         error_message = processing_errors.get(video_id)
+
+        logger.debug(f"Video {video_id} status: {status}, indexes: {video_indexes.get(video_id, [])}")
 
         # Get created indexes from our tracking
         indexes_created = video_indexes.get(video_id, [])

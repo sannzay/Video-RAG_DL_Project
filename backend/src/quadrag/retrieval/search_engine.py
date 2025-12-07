@@ -138,41 +138,45 @@ class VideoSearchEngine:
                     logger.warning(f"Failed to collect similarity results: {e}, falling back to text search")
                     retrieval_results = []
             except (AttributeError, Exception) as e:
-                # If embedding index doesn't exist, use text-based search
-                # Limit to first 50 chunks to avoid blocking on all transcriptions
-                logger.warning(f"Embedding index not available, using text search on limited chunks: {e}")
-                
+                # If embedding index doesn't exist, use text-based search across ALL chunks
+                logger.warning(f"Embedding index not available, using text search across all chunks: {e}")
+
                 # Get all audio chunks data - now running in proper async context
                 try:
-                    logger.info("Collecting audio chunks with pre-computed transcriptions...")
+                    logger.info("Collecting all audio chunks with pre-computed transcriptions...")
 
-                    # Since we're in async context, collect() should work
-                    limited_chunks = audio_view.select(
+                    # Collect ALL chunks, not just a limited subset
+                    print("DEBUG: About to collect audio chunks for search")
+                    all_chunks = audio_view.select(
                         audio_view.start_time_sec,
                         audio_view.end_time_sec,
                         audio_view.transcript_text,
-                    ).limit(10).collect()
+                    ).collect()
+                    print(f"DEBUG: Audio collect completed, got {len(all_chunks)} chunks")
 
-                    logger.info(f"Successfully collected {len(limited_chunks)} audio chunks")
+                    logger.info(f"Successfully collected {len(all_chunks)} audio chunks for comprehensive search")
 
-                    # Log transcription status for debugging
-                    for i, chunk in enumerate(limited_chunks):
+                    # Log transcription status for debugging (only first few for brevity)
+                    sample_size = min(5, len(all_chunks))
+                    for i in range(sample_size):
+                        chunk = all_chunks[i]
                         transcription = str(chunk.get("transcript_text", ""))
                         raw_transcript = chunk.get("transcription", "")
-                        logger.info(f"Chunk {i}: transcript_text='{transcription[:100]}...', raw_transcription='{str(raw_transcript)[:200]}...'")
-                        if transcription.strip():
-                            logger.debug(f"Chunk {i}: '{transcription[:100]}...'")
-                        else:
-                            logger.warning(f"Chunk {i} has empty transcription, raw: {raw_transcript}")
+                        logger.debug(f"Sample chunk {i}: transcript_text='{transcription[:100]}...', raw_transcription='{str(raw_transcript)[:200]}...'")
+                        if not transcription.strip():
+                            logger.warning(f"Chunk {i} has empty transcription")
+
+                    if len(all_chunks) > sample_size:
+                        logger.debug(f"... and {len(all_chunks) - sample_size} more chunks")
 
                 except Exception as e:
                     logger.warning(f"Failed to collect audio chunks: {e}")
-                    limited_chunks = []
-                
-                # Simple text matching (case-insensitive)
+                    all_chunks = []
+
+                # Simple text matching across ALL chunks (case-insensitive)
                 query_lower = query_text.lower()
                 scored_chunks = []
-                for chunk in limited_chunks:
+                for chunk in all_chunks:
                     # Handle both dict and object access patterns
                     if isinstance(chunk, dict):
                         text = str(chunk.get("transcript_text", "")).lower().strip()

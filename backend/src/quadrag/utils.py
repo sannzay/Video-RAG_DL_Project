@@ -4,9 +4,12 @@ import base64
 import io
 import json
 import subprocess
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
+import psutil
 from PIL import Image
 from loguru import logger
 
@@ -184,3 +187,146 @@ def decode_base64_to_image(base64_string: str) -> Image.Image:
     """
     image_data = base64.b64decode(base64_string)
     return Image.open(io.BytesIO(image_data))
+
+
+# Large video support utilities
+
+def get_video_duration(video_path: str) -> float:
+    """Get video duration in seconds using ffprobe.
+
+    Args:
+        video_path: Path to video file
+
+    Returns:
+        Duration in seconds, or 0 if unable to determine
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "quiet",
+                "-print_format", "json",
+                "-show_format",
+                "-show_streams",
+                video_path
+            ],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        data = json.loads(result.stdout)
+        if "format" in data and "duration" in data["format"]:
+            return float(data["format"]["duration"])
+        elif "streams" in data:
+            # Try to get duration from video stream
+            for stream in data["streams"]:
+                if stream.get("codec_type") == "video" and "duration" in stream:
+                    return float(stream["duration"])
+
+        logger.warning(f"Could not extract duration from ffprobe output for {video_path}")
+        return 0.0
+
+    except Exception as e:
+        logger.warning(f"Failed to get video duration for {video_path}: {e}")
+        return 0.0
+
+
+def calculate_frame_count(video_duration_seconds: float) -> int:
+    """Calculate optimal frame count based on video duration.
+
+    Args:
+        video_duration_seconds: Video duration in seconds
+
+    Returns:
+        Recommended number of frames to extract
+    """
+    if video_duration_seconds <= 0:
+        return 45  # Default fallback
+
+    if video_duration_seconds < 300:  # < 5 minutes
+        return 45
+    elif video_duration_seconds < 1800:  # < 30 minutes
+        return 90
+    elif video_duration_seconds < 3600:  # < 1 hour
+        return 120
+    elif video_duration_seconds < 7200:  # < 2 hours
+        return 180
+    else:  # Very long videos
+        # 1 frame per 2 minutes, max 300 frames
+        return min(300, max(180, int(video_duration_seconds // 120)))
+
+
+def validate_video_size(file_path: str) -> bool:
+    """Validate video file size and duration limits.
+
+    Args:
+        file_path: Path to video file
+
+    Returns:
+        True if valid
+
+    Raises:
+        ValueError: If video exceeds limits
+    """
+    MAX_FILE_SIZE_MB = 500  # Configurable limit
+    MAX_DURATION_SECONDS = 7200  # 2 hours max
+
+    # Check file size
+    size_mb = Path(file_path).stat().st_size / (1024 * 1024)
+    if size_mb > MAX_FILE_SIZE_MB:
+        raise ValueError(f"Video too large: {size_mb:.1f}MB > {MAX_FILE_SIZE_MB}MB limit")
+
+    # Check duration
+    duration = get_video_duration(file_path)
+    if duration > MAX_DURATION_SECONDS:
+        hours = duration / 3600
+        raise ValueError(f"Video too long: {hours:.1f} hours > {MAX_DURATION_SECONDS/3600:.1f} hour limit")
+
+    logger.info(f"Video validation passed: {size_mb:.1f}MB, {duration:.1f}s duration")
+    return True
+
+
+@contextmanager
+def monitor_processing(operation: str):
+    """Context manager to monitor processing time and memory usage.
+
+    Args:
+        operation: Name of the operation being monitored
+    """
+    start_time = time.time()
+    start_memory = psutil.Process().memory_info().rss / 1024 / 1024
+
+    try:
+        yield
+    finally:
+        end_time = time.time()
+        end_memory = psutil.Process().memory_info().rss / 1024 / 1024
+
+        duration = end_time - start_time
+        memory_delta = end_memory - start_memory
+
+        logger.info(f"📊 {operation}: {duration:.1f}s, "
+                   f"Memory: {start_memory:.1f}MB → {end_memory:.1f}MB "
+                   f"(Δ{memory_delta:+.1f}MB)")
+
+
+def cleanup_processing_files(original_path: str, transcoded_path: str) -> None:
+    """Clean up intermediate processing files.
+
+    Args:
+        original_path: Path to original file
+        transcoded_path: Path to transcoded file
+    """
+    try:
+        transcoded_file = Path(transcoded_path)
+        if transcoded_file.exists() and transcoded_file.stat().st_size > 0:
+            # Transcoding succeeded, safe to remove original
+            original_file = Path(original_path)
+            if original_file.exists() and str(original_file) != str(transcoded_file):
+                original_file.unlink()
+                logger.info(f"Cleaned up original file: {original_path}")
+        else:
+            logger.warning(f"Transcoded file invalid or missing, keeping original: {original_path}")
+    except Exception as e:
+        logger.warning(f"Failed to cleanup files: {e}")
