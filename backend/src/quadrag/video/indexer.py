@@ -320,82 +320,82 @@ class VideoIndexer:
                     f"Creating Domain Index for video {video_id} "
                     f"with context: {domain_context}"
                 )
-            video_info = get_video_from_registry(video_id)
-            if not video_info:
-                raise ValueError(f"Video {video_id} not found in registry")
+                video_info = get_video_from_registry(video_id)
+                if not video_info:
+                    raise ValueError(f"Video {video_id} not found in registry")
 
-            # Check if frames_view exists and is accessible (requires image index)
-            if not hasattr(video_info, 'frames_view') or not video_info.frames_view:
-                logger.warning(f"Cannot create Domain Index for video {video_id}: Image index not available (frames_view attribute missing)")
-                logger.info(f"Domain context will be used for text-based search only")
-                # Still update the domain view to indicate domain context is set
-                domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
-                update_domain_view(video_id, domain_view_name)
-                return True
-
-            # Try to access frames_view to ensure it exists in Pixeltable
-            try:
-                frames_view = video_info.frames_view
-                # Test if frames_view is actually accessible by checking if it has data
-                test_count = frames_view.count()
-                if test_count == 0:
-                    logger.warning(f"Frames view exists but is empty for video {video_id}")
+                # Check if frames_view exists and is accessible (requires image index)
+                if not hasattr(video_info, 'frames_view') or not video_info.frames_view:
+                    logger.warning(f"Cannot create Domain Index for video {video_id}: Image index not available (frames_view attribute missing)")
                     logger.info(f"Domain context will be used for text-based search only")
+                    # Still update the domain view to indicate domain context is set
                     domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
                     update_domain_view(video_id, domain_view_name)
                     return True
-            except Exception as e:
-                logger.warning(f"Cannot create Domain Index for video {video_id}: Frames view not accessible ({e})")
-                logger.info(f"Domain context will be used for text-based search only")
-                # Still update the domain view to indicate domain context is set
-                domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
-                update_domain_view(video_id, domain_view_name)
-                return True
 
-            # Create domain-specific captions by manually processing each frame
-            # Store them in registry for search access (avoiding Pixeltable UDF issues)
-            logger.info(f"Creating domain captions for {video_id} with context: {domain_context}")
+                # Try to access frames_view to ensure it exists in Pixeltable
+                try:
+                    frames_view = video_info.frames_view
+                    # Test if frames_view is actually accessible by checking if it has data
+                    test_count = frames_view.count()
+                    if test_count == 0:
+                        logger.warning(f"Frames view exists but is empty for video {video_id}")
+                        logger.info(f"Domain context will be used for text-based search only")
+                        domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
+                        update_domain_view(video_id, domain_view_name)
+                        return True
+                except Exception as e:
+                    logger.warning(f"Cannot create Domain Index for video {video_id}: Frames view not accessible ({e})")
+                    logger.info(f"Domain context will be used for text-based search only")
+                    # Still update the domain view to indicate domain context is set
+                    domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
+                    update_domain_view(video_id, domain_view_name)
+                    return True
 
-            # Get all frames
-            frames_data = frames_view.select(
-                frames_view.pos_msec,
-                frames_view.resized_frame
-            ).collect()
+                # Create domain-specific captions by manually processing each frame
+                # Store them in registry for search access (avoiding Pixeltable UDF issues)
+                logger.info(f"Creating domain captions for {video_id} with context: {domain_context}")
 
-            logger.info(f"Processing {len(frames_data)} frames for domain captions")
+                # Get all frames
+                frames_data = frames_view.select(
+                    frames_view.pos_msec,
+                    frames_view.resized_frame
+                ).collect()
 
-            # Process frames in batches to manage memory and API rate limits
-            domain_captions = {}
-            batch_size = 5  # Process 5 frames at a time
-            total_frames = len(frames_data)
+                logger.info(f"Processing {len(frames_data)} frames for domain captions")
 
-            with monitor_processing("Domain index creation"):
-                for batch_start in range(0, total_frames, batch_size):
-                    batch_end = min(batch_start + batch_size, total_frames)
-                    batch_frames = frames_data[batch_start:batch_end]
+                # Process frames in batches to manage memory and API rate limits
+                domain_captions = {}
+                batch_size = 5  # Process 5 frames at a time
+                total_frames = len(frames_data)
 
-                    logger.info(f"Processing batch {batch_start//batch_size + 1}/{(total_frames + batch_size - 1)//batch_size}: "
-                               f"frames {batch_start}-{batch_end-1}")
+                with monitor_processing("Domain index creation"):
+                    for batch_start in range(0, total_frames, batch_size):
+                        batch_end = min(batch_start + batch_size, total_frames)
+                        batch_frames = frames_data[batch_start:batch_end]
 
-                    # Process each frame in the current batch
-                    for i, frame_data in enumerate(batch_frames):
-                        frame_idx = batch_start + i
-                        try:
-                            frame_image = frame_data['resized_frame']
-                            pos_msec = frame_data['pos_msec']
+                        logger.info(f"Processing batch {batch_start//batch_size + 1}/{(total_frames + batch_size - 1)//batch_size}: "
+                                   f"frames {batch_start}-{batch_end-1}")
 
-                    # Generate caption using direct API call
-                    try:
-                        # Convert PIL Image to base64
-                        buffer = BytesIO()
-                        frame_image.save(buffer, format="PNG")
-                        img_base64 = base64.b64encode(buffer.getvalue()).decode()
+                        # Process each frame in the current batch
+                        for i, frame_data in enumerate(batch_frames):
+                            frame_idx = batch_start + i
+                            try:
+                                frame_image = frame_data['resized_frame']
+                                pos_msec = frame_data['pos_msec']
 
-                        # Create OpenAI client
-                        client = OpenAI()
+                                # Generate caption using direct API call
+                                try:
+                                    # Convert PIL Image to base64
+                                    buffer = BytesIO()
+                                    frame_image.save(buffer, format="PNG")
+                                    img_base64 = base64.b64encode(buffer.getvalue()).decode()
 
-                        # Create domain-specific prompt
-                        prompt = f"""Analyze this image in the context of: {domain_context}
+                                    # Create OpenAI client
+                                    client = OpenAI()
+
+                                    # Create domain-specific prompt
+                                    prompt = f"""Analyze this image in the context of: {domain_context}
 
 Describe what you see, focusing on elements that are most relevant to understanding {domain_context}.
 - If the scene contains people, analyze their expressions, body language, and interactions
@@ -405,71 +405,71 @@ Describe what you see, focusing on elements that are most relevant to understand
 
 Provide a clear, factual description of the visual content."""
 
-                        # Make synchronous API call
-                        response = client.chat.completions.create(
-                            model="gpt-4o-mini",
-                            messages=[{
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": prompt},
-                                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
-                                ]
-                            }],
-                            max_tokens=200,
-                            temperature=0.3
-                        )
+                                    # Make synchronous API call
+                                    response = client.chat.completions.create(
+                                        model="gpt-4o-mini",
+                                        messages=[{
+                                            "role": "user",
+                                            "content": [
+                                                {"type": "text", "text": prompt},
+                                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
+                                            ]
+                                        }],
+                                        max_tokens=200,
+                                        temperature=0.3
+                                    )
 
-                        if response and response.choices and len(response.choices) > 0:
-                            description = response.choices[0].message.content
-                            if description and isinstance(description, str):
-                                caption = description.strip() or f"Empty description for {domain_context}"
-                            else:
-                                caption = f"Invalid response format for {domain_context}"
-                        else:
-                            caption = f"No response from vision API for {domain_context}"
+                                    if response and response.choices and len(response.choices) > 0:
+                                        description = response.choices[0].message.content
+                                        if description and isinstance(description, str):
+                                            caption = description.strip() or f"Empty description for {domain_context}"
+                                        else:
+                                            caption = f"Invalid response format for {domain_context}"
+                                    else:
+                                        caption = f"No response from vision API for {domain_context}"
 
-                    except Exception as e:
-                        error_msg = str(e)[:100]
-                        caption = f"Domain caption unavailable ({domain_context}): {error_msg}"
+                                except Exception as e:
+                                    error_msg = str(e)[:100]
+                                    caption = f"Domain caption unavailable ({domain_context}): {error_msg}"
 
-                    domain_captions[pos_msec] = caption
+                                domain_captions[pos_msec] = caption
 
-                            # Log each generated caption
-                            logger.info(f"Frame {pos_msec/1000:.1f}s: {caption[:200]}{'...' if len(caption) > 200 else ''}")
+                                # Log each generated caption
+                                logger.info(f"Frame {pos_msec/1000:.1f}s: {caption[:200]}{'...' if len(caption) > 200 else ''}")
 
-                        except Exception as e:
-                            logger.warning(f"Failed to generate caption for frame at {pos_msec}: {e}")
-                            domain_captions[pos_msec] = f"Domain caption unavailable: {str(e)[:50]}"
+                            except Exception as e:
+                                logger.warning(f"Failed to generate caption for frame at {pos_msec}: {e}")
+                                domain_captions[pos_msec] = f"Domain caption unavailable: {str(e)[:50]}"
 
-                    # Add rate limiting between batches to avoid API limits
-                    if batch_end < total_frames:
-                        logger.info("Rate limiting: waiting 2 seconds before next batch...")
-                        import time
-                        time.sleep(2)
+                        # Add rate limiting between batches to avoid API limits
+                        if batch_end < total_frames:
+                            logger.info("Rate limiting: waiting 2 seconds before next batch...")
+                            import time
+                            time.sleep(2)
 
-            # Store domain captions in registry for search access
-            # This avoids Pixeltable UDF and embedding issues
-            from quadrag.video.registry import update_domain_captions
-            update_domain_captions(video_id, domain_captions, domain_context)
+                # Store domain captions in registry for search access
+                # This avoids Pixeltable UDF and embedding issues
+                from quadrag.video.registry import update_domain_captions
+                update_domain_captions(video_id, domain_captions, domain_context)
 
-            logger.info(f"Stored {len(domain_captions)} domain captions in registry")
+                logger.info(f"Stored {len(domain_captions)} domain captions in registry")
 
-            # Log summary of all generated captions
-            logger.info(f"📋 DOMAIN CAPTIONS SUMMARY for video {video_id} (context: '{domain_context}'):")
-            for pos_msec, caption in sorted(domain_captions.items()):
-                timestamp = pos_msec / 1000.0
-                logger.info(f"  {timestamp:.1f}s: {caption}")
+                # Log summary of all generated captions
+                logger.info(f"📋 DOMAIN CAPTIONS SUMMARY for video {video_id} (context: '{domain_context}'):")
+                for pos_msec, caption in sorted(domain_captions.items()):
+                    timestamp = pos_msec / 1000.0
+                    logger.info(f"  {timestamp:.1f}s: {caption}")
 
-            # Update the domain view to indicate domain context is set
-            domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
-            update_domain_view(video_id, domain_view_name)
+                # Update the domain view to indicate domain context is set
+                domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
+                update_domain_view(video_id, domain_view_name)
 
-            logger.info(f"Successfully created Domain Index for video {video_id} with context: {domain_context}")
-            return True
+                logger.info(f"Successfully created Domain Index for video {video_id} with context: {domain_context}")
+                return True
 
-        except Exception as e:
-            logger.error(f"Failed to create Domain Index: {e}")
-            return False
+            except Exception as e:
+                logger.error(f"Failed to create Domain Index: {e}")
+                return False
 
 
 # Global indexer instance
