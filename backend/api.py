@@ -269,6 +269,7 @@ async def process_video_background(video_id: str, video_path: str):
         video_id: Video identifier
         video_path: Path to the uploaded video file
     """
+    logger.info(f"Background task started for video {video_id}")
     try:
         logger.info(f"Starting background transcoding for video {video_id}")
 
@@ -304,8 +305,12 @@ async def process_video_background(video_id: str, video_path: str):
         logger.info(f"Starting video indexing for {video_id}")
         await _process_video_async(video_id)
 
+        logger.info(f"Background task completed successfully for video {video_id}")
+
     except Exception as e:
         logger.error(f"Background processing failed for video {video_id}: {e}")
+        import traceback
+        logger.error(f"Background processing traceback: {traceback.format_exc()}")
         processing_status[video_id] = ProcessingStatus.FAILED
         processing_errors[video_id] = str(e)
 
@@ -359,7 +364,20 @@ async def upload_video(file: UploadFile = File(...)):
         # This prevents the upload request from timing out on large videos
         processing_status[video_id] = ProcessingStatus.PROCESSING
         logger.info(f"Starting background processing for video {video_id}")
-        asyncio.create_task(process_video_background(video_id, str(file_path)))
+
+        # Use asyncio.create_task in a fire-and-forget manner, but ensure proper exception handling
+        task = asyncio.create_task(process_video_background(video_id, str(file_path)))
+        # Don't await the task - let it run in background
+        # Add callback to handle any unhandled exceptions
+        def handle_task_exception(task):
+            try:
+                task.result()  # This will raise any exception that occurred
+            except Exception as e:
+                logger.error(f"Background task for video {video_id} failed: {e}")
+                processing_status[video_id] = ProcessingStatus.FAILED
+                processing_errors[video_id] = f"Background processing failed: {str(e)}"
+
+        task.add_done_callback(handle_task_exception)
 
         logger.info(f"Video uploaded successfully: {file_path}")
 
@@ -579,6 +597,7 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
         processing_status[video_id] = ProcessingStatus.COMPLETED
         video_indexes[video_id] = indexes_created_list
         logger.info(f"Successfully processed video {video_id} with indexes: {indexes_created_list}")
+        logger.info(f"Status updated to COMPLETED for video {video_id}, current status: {processing_status.get(video_id)}")
     else:
         processing_status[video_id] = ProcessingStatus.FAILED
         processing_errors[video_id] = "All index creation failed"
@@ -621,6 +640,8 @@ async def get_video_status(video_id: str):
     try:
         status = processing_status.get(video_id, ProcessingStatus.PENDING)
         error_message = processing_errors.get(video_id)
+
+        logger.debug(f"Video {video_id} status: {status}, indexes: {video_indexes.get(video_id, [])}")
 
         # Get created indexes from our tracking
         indexes_created = video_indexes.get(video_id, [])
