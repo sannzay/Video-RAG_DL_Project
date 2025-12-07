@@ -912,6 +912,19 @@ def show_chat_interface():
     # Show processing message below title if video is still processing
     if video_info.get("status") != "completed":
         st.info("⏳ **Video is still processing...** Please wait for processing to complete before chatting.")
+        
+        # Check if any videos are processing (same logic as sidebar)
+        has_processing = any(v.get("status") == "processing" for v in st.session_state.uploaded_videos.values())
+        
+        # Manual refresh button - make it more prominent when processing (same as sidebar)
+        if has_processing:
+            if st.button("🔄 Refresh Status", key="refresh_status_chat", help="Click to check if video processing is complete", type="primary", use_container_width=True):
+                st.rerun()
+            st.caption("💡 Click Refresh Status to check processing progress")
+        else:
+            if st.button("🔄 Refresh Status", key="refresh_status_chat", help="Manually refresh video processing status", use_container_width=True):
+                st.rerun()
+        
         return
     
     # Determine required indexes based on whether domain context was provided
