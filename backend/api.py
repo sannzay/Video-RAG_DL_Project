@@ -262,6 +262,54 @@ async def health_check():
     )
 
 
+async def process_video_background(video_id: str, video_path: str):
+    """Background task to transcode and process a video.
+
+    Args:
+        video_id: Video identifier
+        video_path: Path to the uploaded video file
+    """
+    try:
+        logger.info(f"Starting background transcoding for video {video_id}")
+
+        # Transcode the video first
+        from quadrag.utils import validate_video_format, transcode_video, monitor_processing
+        try:
+            # Validate format for logging
+            is_valid = validate_video_format(video_path)
+            logger.info(f"Video validation result: {'PASSED' if is_valid else 'FAILED'}")
+
+            # Always transcode to ensure pixeltable compatibility
+            logger.info("Transcoding video to guaranteed compatible format (H.264 Main + AAC)...")
+
+            # Monitor transcoding resource usage
+            with monitor_processing("Video transcoding"):
+                transcoded_path = transcode_video(video_path)
+
+            # Clean up original file after successful transcoding
+            from quadrag.utils import cleanup_processing_files
+            cleanup_processing_files(video_path, transcoded_path)
+
+            # Rename transcoded file to original location
+            Path(transcoded_path).rename(video_path)
+            logger.info("Video transcoded successfully to pixeltable-compatible format")
+
+        except Exception as e:
+            logger.error(f"Video transcoding failed for {video_id}: {e}")
+            processing_status[video_id] = ProcessingStatus.FAILED
+            processing_errors[video_id] = f"Transcoding failed: {str(e)}"
+            return
+
+        # Now start the actual video processing
+        logger.info(f"Starting video indexing for {video_id}")
+        await _process_video_async(video_id)
+
+    except Exception as e:
+        logger.error(f"Background processing failed for video {video_id}: {e}")
+        processing_status[video_id] = ProcessingStatus.FAILED
+        processing_errors[video_id] = str(e)
+
+
 @app.post("/upload-video", response_model=VideoUploadResponse)
 async def upload_video(file: UploadFile = File(...)):
     """Upload a video file.
@@ -321,54 +369,6 @@ async def upload_video(file: UploadFile = File(...)):
             file_path=str(file_path),
             message="Video uploaded successfully",
         )
-
-
-async def process_video_background(video_id: str, video_path: str):
-    """Background task to transcode and process a video.
-
-    Args:
-        video_id: Video identifier
-        video_path: Path to the uploaded video file
-    """
-    try:
-        logger.info(f"Starting background transcoding for video {video_id}")
-
-        # Transcode the video first
-        from quadrag.utils import validate_video_format, transcode_video, monitor_processing
-        try:
-            # Validate format for logging
-            is_valid = validate_video_format(video_path)
-            logger.info(f"Video validation result: {'PASSED' if is_valid else 'FAILED'}")
-
-            # Always transcode to ensure pixeltable compatibility
-            logger.info("Transcoding video to guaranteed compatible format (H.264 Main + AAC)...")
-
-            # Monitor transcoding resource usage
-            with monitor_processing("Video transcoding"):
-                transcoded_path = transcode_video(video_path)
-
-            # Clean up original file after successful transcoding
-            from quadrag.utils import cleanup_processing_files
-            cleanup_processing_files(video_path, transcoded_path)
-
-            # Rename transcoded file to original location
-            Path(transcoded_path).rename(video_path)
-            logger.info("Video transcoded successfully to pixeltable-compatible format")
-
-        except Exception as e:
-            logger.error(f"Video transcoding failed for {video_id}: {e}")
-            processing_status[video_id] = ProcessingStatus.FAILED
-            processing_errors[video_id] = f"Transcoding failed: {str(e)}"
-            return
-
-        # Now start the actual video processing
-        logger.info(f"Starting video indexing for {video_id}")
-        await _process_video_async(video_id)
-
-    except Exception as e:
-        logger.error(f"Background processing failed for video {video_id}: {e}")
-        processing_status[video_id] = ProcessingStatus.FAILED
-        processing_errors[video_id] = str(e)
 
     except Exception as e:
         logger.error(f"Error uploading video: {e}")
