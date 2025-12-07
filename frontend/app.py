@@ -1096,42 +1096,26 @@ def main():
                         video_id = data["video_id"]
 
                         st.success(f"✅ Video uploaded successfully!")
+                        st.info("🎬 Video is now being processed in the background. This may take several minutes for large videos.")
 
-                        # Start processing
-                        with st.spinner("⚙️ Processing video (creating indexes)..."):
-                            try:
-                                # Include domain context if set
-                                process_payload = {"video_id": video_id}
-                                if st.session_state.get("domain_context"):
-                                    process_payload["domain_context"] = st.session_state.domain_context
-                                    process_payload["session_id"] = st.session_state.session_id
+                        # Processing starts automatically in background - just update session state
+                        st.session_state.uploaded_videos[video_id] = {
+                            "filename": uploaded_file.name,
+                            "upload_time": datetime.now(),
+                            "status": "processing",  # Background processing already started
+                            "indexes": [],
+                            "domain_context": st.session_state.get("domain_context"),
+                            "session_id": st.session_state.get("session_id"),
+                        }
 
-                                process_response = requests.post(
-                                    f"{current_url}/process-video",
-                                    json=process_payload,
-                                    timeout=30
-                                )
+                        # Show progress message
+                        with st.spinner("⏳ Background processing started..."):
+                            # Give the backend a moment to start processing
+                            import time
+                            time.sleep(2)
 
-                                if process_response.status_code == 200:
-                                    st.session_state.uploaded_videos[video_id] = {
-                                        "filename": uploaded_file.name,
-                                        "upload_time": datetime.now(),
-                                        "status": "processing",
-                                    }
-                                    st.session_state.active_video_id = video_id
-
-                                    st.success("✅ Video processing started!")
-                                    st.info("🔄 Video is being processed. This may take a few minutes. **Click '🔄 Refresh Status' in the sidebar** to check when processing is complete.")
-                                    time.sleep(1)
-                                    st.rerun()
-                                else:
-                                    st.error(f"❌ Failed to start processing: {process_response.status_code}")
-                                    if process_response.text:
-                                        st.error(f"Error: {process_response.text}")
-                            except requests.exceptions.RequestException as e:
-                                st.error(f"❌ Connection error while processing: {str(e)}")
-                                if st.button("🔄 Retry Processing", use_container_width=True, type="primary"):
-                                    st.rerun()
+                        st.success("🚀 Processing initiated! Check the video status in the sidebar.")
+                        st.rerun()
                     else:
                         st.error(f"❌ Failed to upload video: Status {response.status_code}")
                         if response.text:
