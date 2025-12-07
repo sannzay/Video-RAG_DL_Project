@@ -368,16 +368,8 @@ async def upload_video(file: UploadFile = File(...)):
         # Use asyncio.create_task in a fire-and-forget manner, but ensure proper exception handling
         task = asyncio.create_task(process_video_background(video_id, str(file_path)))
         # Don't await the task - let it run in background
-        # Add callback to handle any unhandled exceptions
-        def handle_task_exception(task):
-            try:
-                task.result()  # This will raise any exception that occurred
-            except Exception as e:
-                logger.error(f"Background task for video {video_id} failed: {e}")
-                processing_status[video_id] = ProcessingStatus.FAILED
-                processing_errors[video_id] = f"Background processing failed: {str(e)}"
-
-        task.add_done_callback(handle_task_exception)
+        # Remove callback to avoid event loop corruption during shutdown
+        # The task will handle its own error logging internally
 
         logger.info(f"Video uploaded successfully: {file_path}")
 
