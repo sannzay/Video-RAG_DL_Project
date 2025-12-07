@@ -749,7 +749,7 @@ def show_video_library():
                 '<span class="status-badge status-failed">✗ Failed</span>',
                 unsafe_allow_html=True
             )
-        
+            
         # Indexes created - show all possible indexes with status (for all statuses)
         st.sidebar.markdown(f"""
         <div style="margin: 0.5rem 0;">
@@ -811,8 +811,10 @@ def show_video_library():
                 except Exception as e:
                     st.sidebar.error(f"Re-processing failed: {str(e)}")
 
-        # Select button - show if video is completed (even with partial indexes)
-        if not is_active and status == "completed":
+        # Select button - only show if there are multiple videos and this one is not active
+        # If there's only one video, it's automatically selected
+        total_videos_count = len(st.session_state.uploaded_videos)
+        if not is_active and status == "completed" and total_videos_count > 1:
             has_required_indexes = all(idx in index_names for idx in required_indexes)
 
             if has_required_indexes:
@@ -881,16 +883,35 @@ def show_domain_context_panel():
 
 def show_chat_interface():
     """Show enhanced chat interface."""
-    st.markdown("### 💬 Chat with Video")
+    # Header with New Chat Session button
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown("### 💬 Chat with Video")
+    with col2:
+        if st.button("🔄 New Chat Session", use_container_width=True, help="Start a completely new session (resets everything and returns to start)"):
+            # Reset entire application state for a fresh start
+            st.session_state.chat_history = []
+            st.session_state.uploaded_videos = {}
+            st.session_state.active_video_id = None
+            st.session_state.domain_context = None
+            st.session_state.domain_set = False
+            st.session_state.domain_context_editing = False
+            st.session_state.session_id = str(uuid.uuid4())
+            st.rerun()
     
     # Check if video is selected and processed
     if not st.session_state.active_video_id:
-        st.warning("📹 Select a video to start chatting")
+        st.warning("📹 No video available. Please upload a video first.")
         return
-
+    
     video_info = st.session_state.uploaded_videos.get(st.session_state.active_video_id)
     if not video_info:
-        st.warning("📹 Select a video to start chatting")
+        st.warning("📹 No video available. Please upload a video first.")
+        return
+    
+    # Show processing message below title if video is still processing
+    if video_info.get("status") != "completed":
+        st.info("⏳ **Video is still processing...** Please wait for processing to complete before chatting.")
         return
     
     # Determine required indexes based on whether domain context was provided
@@ -902,10 +923,6 @@ def show_chat_interface():
     indexes = video_info.get("indexes", [])
     index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
     has_required_indexes = all(idx in index_names for idx in required_indexes)
-
-    if video_info.get("status") != "completed":
-        st.info("⏳ Video is still processing...")
-        return
 
     # Show warning if some indexes are missing but allow use of available indexes
     if not has_required_indexes:
@@ -1050,6 +1067,12 @@ def main():
     show_video_library()
     show_system_info()  # Move to sidebar
     
+    # Auto-select video if there's only one video and none is currently selected
+    if not st.session_state.active_video_id and len(st.session_state.uploaded_videos) == 1:
+        # Automatically select the only video
+        video_id = list(st.session_state.uploaded_videos.keys())[0]
+        st.session_state.active_video_id = video_id
+    
     # Domain Context (at the top, above upload)
     show_domain_context_panel()
     
@@ -1107,6 +1130,8 @@ def main():
                             "domain_context": st.session_state.get("domain_context"),
                             "session_id": st.session_state.get("session_id"),
                         }
+                        # Automatically select the newly uploaded video
+                        st.session_state.active_video_id = video_id
 
                         # Show progress message
                         with st.spinner("⏳ Background processing started..."):
