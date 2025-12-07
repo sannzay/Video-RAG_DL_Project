@@ -85,7 +85,7 @@ if _backend_src not in sys.path and os.path.isdir(_backend_src):
 # ============================================================================
 
 import aiofiles
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -316,7 +316,7 @@ async def process_video_background(video_id: str, video_path: str):
 
 
 @app.post("/upload-video", response_model=VideoUploadResponse)
-async def upload_video(file: UploadFile = File(...)):
+async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     """Upload a video file.
 
     Args:
