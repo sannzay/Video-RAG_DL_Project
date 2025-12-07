@@ -85,7 +85,7 @@ if _backend_src not in sys.path and os.path.isdir(_backend_src):
 # ============================================================================
 
 import aiofiles
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -309,7 +309,7 @@ async def process_video_background(video_id: str, video_path: str):
         import concurrent.futures
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            await loop.run_in_executor(executor, _process_video_sync, video_id)
+            await loop.run_in_executor(executor, _process_video_sync, video_id, domain_context, session_id)
 
         logger.info(f"Background task completed successfully for video {video_id}")
 
@@ -321,7 +321,7 @@ async def process_video_background(video_id: str, video_path: str):
         processing_errors[video_id] = str(e)
 
 
-def _process_video_sync(video_id: str):
+def _process_video_sync(video_id: str, domain_context: Optional[str] = None, session_id: Optional[str] = None):
     """Synchronous wrapper for video processing to avoid asyncio conflicts."""
     try:
         # Create a new event loop for Pixeltable operations
@@ -329,7 +329,7 @@ def _process_video_sync(video_id: str):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(_process_video_async(video_id))
+            loop.run_until_complete(_process_video_async(video_id, domain_context, session_id))
         finally:
             loop.close()
     except Exception as e:
@@ -341,14 +341,17 @@ def _process_video_sync(video_id: str):
 
 
 @app.post("/upload-video", response_model=VideoUploadResponse)
-
-
-@app.post("/upload-video", response_model=VideoUploadResponse)
-async def upload_video(file: UploadFile = File(...)):
+async def upload_video(
+    file: UploadFile = File(...),
+    domain_context: Optional[str] = Form(None, description="Optional domain context for domain-specific indexing"),
+    session_id: Optional[str] = Form(None, description="Optional session ID for domain indexing")
+):
     """Upload a video file.
 
     Args:
         file: Video file to upload
+        domain_context: Optional domain context for domain-specific indexing
+        session_id: Optional session ID for domain indexing
 
     Returns:
         VideoUploadResponse with video ID and file path
@@ -394,7 +397,7 @@ async def upload_video(file: UploadFile = File(...)):
         logger.info(f"Starting background processing for video {video_id}")
 
         # Use asyncio.create_task in a fire-and-forget manner, but ensure proper exception handling
-        task = asyncio.create_task(process_video_background(video_id, str(file_path)))
+        task = asyncio.create_task(_process_video_background(video_id, domain_context, session_id))
         # Don't await the task - let it run in background
         # Remove callback to avoid event loop corruption during shutdown
         # The task will handle its own error logging internally
