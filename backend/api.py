@@ -303,16 +303,44 @@ async def process_video_background(video_id: str, video_path: str):
 
         # Now start the actual video processing
         logger.info(f"Starting video indexing for {video_id}")
-        await _process_video_async(video_id)
+
+        # Run Pixeltable operations in a separate thread to avoid asyncio conflicts
+        import asyncio
+        import concurrent.futures
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            await loop.run_in_executor(executor, _process_video_sync, video_id)
 
         logger.info(f"Background task completed successfully for video {video_id}")
 
     except Exception as e:
-        logger.error(f"Background processing failed for video {video_id}: {e}")
+        logger.error(f"Background processing failed for {video_id}: {e}")
         import traceback
         logger.error(f"Background processing traceback: {traceback.format_exc()}")
         processing_status[video_id] = ProcessingStatus.FAILED
         processing_errors[video_id] = str(e)
+
+
+def _process_video_sync(video_id: str):
+    """Synchronous wrapper for video processing to avoid asyncio conflicts."""
+    try:
+        # Create a new event loop for Pixeltable operations
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_process_video_async(video_id))
+        finally:
+            loop.close()
+    except Exception as e:
+        logger.error(f"Sync video processing failed for {video_id}: {e}")
+        import traceback
+        logger.error(f"Sync processing traceback: {traceback.format_exc()}")
+        processing_status[video_id] = ProcessingStatus.FAILED
+        processing_errors[video_id] = str(e)
+
+
+@app.post("/upload-video", response_model=VideoUploadResponse)
 
 
 @app.post("/upload-video", response_model=VideoUploadResponse)
