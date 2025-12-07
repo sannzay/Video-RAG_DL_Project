@@ -338,7 +338,8 @@ class VideoSearchEngine:
 
             # Get domain captions from registry
             domain_captions = self.video_info.domain_captions
-            logger.info(f"Found {len(domain_captions)} domain captions in registry")
+            domain_context = getattr(self.video_info, 'domain_context', 'unknown')
+            logger.info(f"Found {len(domain_captions)} domain captions in registry (context: '{domain_context}')")
 
             # Since we can't use Pixeltable embeddings for stored data,
             # we'll do a simple text similarity search
@@ -358,6 +359,13 @@ class VideoSearchEngine:
             # Sort by similarity and take top_k
             scored_captions.sort(key=lambda x: x['similarity'], reverse=True)
             top_results = scored_captions[:top_k]
+
+            # Log search results
+            logger.info(f"🔍 DOMAIN SEARCH RESULTS for '{query_text[:50]}...':")
+            for i, item in enumerate(top_results[:3]):  # Show top 3 results
+                similarity_pct = item['similarity'] * 100
+                timestamp = item['pos_msec'] / 1000.0
+                logger.info(f"  #{i+1} ({similarity_pct:.1f}%): {timestamp:.1f}s - {item['caption'][:100]}{'...' if len(item['caption']) > 100 else ''}")
 
             # Convert to RetrievalResult
             retrieval_results = []

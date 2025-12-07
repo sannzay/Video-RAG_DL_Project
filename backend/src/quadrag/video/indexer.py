@@ -394,7 +394,11 @@ Be detailed about objects, actions, and visual elements that would be important 
                     except Exception as e:
                         error_msg = str(e)[:100]
                         caption = f"Domain caption unavailable ({domain_context}): {error_msg}"
+
                     domain_captions[pos_msec] = caption
+
+                    # Log each generated caption
+                    logger.info(f"Frame {pos_msec/1000:.1f}s: {caption[:200]}{'...' if len(caption) > 200 else ''}")
 
                     if (i + 1) % 5 == 0:  # Log every 5 frames
                         logger.info(f"Processed {i + 1}/{len(frames_data)} frames for domain captions")
@@ -409,6 +413,12 @@ Be detailed about objects, actions, and visual elements that would be important 
             update_domain_captions(video_id, domain_captions, domain_context)
 
             logger.info(f"Stored {len(domain_captions)} domain captions in registry")
+
+            # Log summary of all generated captions
+            logger.info(f"📋 DOMAIN CAPTIONS SUMMARY for video {video_id} (context: '{domain_context}'):")
+            for pos_msec, caption in sorted(domain_captions.items()):
+                timestamp = pos_msec / 1000.0
+                logger.info(f"  {timestamp:.1f}s: {caption}")
 
             # Update the domain view to indicate domain context is set
             domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"

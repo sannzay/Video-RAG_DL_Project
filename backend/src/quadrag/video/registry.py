@@ -169,7 +169,17 @@ def update_domain_captions(video_id: str, domain_captions: Dict[float, str], dom
         _VIDEO_REGISTRY[video_id].domain_captions = domain_captions
         _VIDEO_REGISTRY[video_id].domain_context = domain_context
         _save_registry()
-        logger.info(f"Updated domain captions for video {video_id} ({len(domain_captions)} captions)")
+        logger.info(f"Updated domain captions for video {video_id} ({len(domain_captions)} captions, context: '{domain_context}')")
+
+        # Log first few captions as examples
+        if domain_captions:
+            logger.info("📋 SAMPLE DOMAIN CAPTIONS:")
+            sorted_captions = sorted(domain_captions.items())[:3]  # Show first 3
+            for pos_msec, caption in sorted_captions:
+                timestamp = pos_msec / 1000.0
+                logger.info(f"  {timestamp:.1f}s: {caption[:150]}{'...' if len(caption) > 150 else ''}")
+            if len(domain_captions) > 3:
+                logger.info(f"  ... and {len(domain_captions) - 3} more captions")
 
 
 def get_all_videos() -> Dict[str, VideoIndexInfo]:
