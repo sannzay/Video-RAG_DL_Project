@@ -649,6 +649,9 @@ def show_video_library():
     st.sidebar.markdown("---")
     
     for video_id, video_info in st.session_state.uploaded_videos.items():
+        # Initialize variables
+        index_errors = {}
+
         # Get status from API
         try:
             current_url = get_api_base_url()
