@@ -357,10 +357,10 @@ class VideoIndexer:
                 logger.info(f"Creating domain captions for {video_id} with context: {domain_context}")
 
                 # Get all frames
-                frames_data = frames_view.select(
+                frames_data = list(frames_view.select(
                     frames_view.pos_msec,
                     frames_view.resized_frame
-                ).collect()
+                ).collect())
 
                 logger.info(f"Processing {len(frames_data)} frames for domain captions")
 

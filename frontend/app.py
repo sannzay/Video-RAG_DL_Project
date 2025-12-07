@@ -674,12 +674,10 @@ def show_video_library():
                 # Check if all required indexes are present
                 has_required_indexes = all(idx in index_names for idx in required_indexes)
                 
-                # Only mark as completed if API says completed AND all required indexes are ready
-                if api_status == "completed" and has_required_indexes:
+                # Mark as completed if API says completed, even if some indexes failed
+                # The video is still usable with available indexes
+                if api_status == "completed":
                     status = "completed"
-                elif api_status == "completed" and not has_required_indexes:
-                    # Backend says completed but not all required indexes are ready
-                    status = "processing"
                 else:
                     status = api_status
                 
@@ -729,16 +727,16 @@ def show_video_library():
         # Status badge - only show Ready if all required indexes are present
         if status == "completed":
             has_required_indexes = all(idx in index_names for idx in required_indexes)
-            
+
             if has_required_indexes:
                 st.sidebar.markdown(
                     '<span class="status-badge status-completed">✓ Ready</span>',
                     unsafe_allow_html=True
                 )
             else:
-                # Show processing if not all required indexes are ready
+                # Show ready with warning about missing indexes
                 st.sidebar.markdown(
-                    '<span class="status-badge status-processing">⏳ Processing</span>',
+                    '<span class="status-badge status-completed" style="background: #ffc107; color: #000;">⚠️ Ready (Partial)</span>',
                     unsafe_allow_html=True
                 )
         elif status == "processing":
@@ -768,15 +766,31 @@ def show_video_library():
         """, unsafe_allow_html=True)
 
         # Show index errors if any
-        if index_errors and any(idx in index_errors for idx in all_possible_indexes):
+        has_errors = index_errors and any(idx in index_errors for idx in all_possible_indexes)
+        has_missing_indexes = not all(idx in index_names for idx in required_indexes)
+
+        if has_errors:
             st.sidebar.markdown("**Index Errors:**")
             for idx_name in all_possible_indexes:
                 if idx_name in index_errors:
                     with st.sidebar.expander(f"❌ {idx_name} Error", expanded=False):
                         st.error(index_errors[idx_name][:500] + ("..." if len(index_errors[idx_name]) > 500 else ""))
 
-            # Re-process button for failed indexes
-            if st.sidebar.button(f"🔄 Re-process Video", key=f"reprocess_{video_id}", help="Retry creating failed indexes"):
+        # Re-process button for failed indexes or missing required indexes
+        if has_errors or (status == "completed" and has_missing_indexes):
+            missing_list = [idx for idx in required_indexes if idx not in index_names] if has_missing_indexes else []
+            error_list = list(index_errors.keys()) if has_errors else []
+
+            all_missing = list(set(missing_list + error_list))
+
+            if all_missing:
+                button_text = f"🔄 Re-process ({', '.join(all_missing)})"
+                button_help = f"Retry creating failed indexes: {', '.join(all_missing)}"
+            else:
+                button_text = "🔄 Re-process Video"
+                button_help = "Retry creating failed or missing indexes"
+
+            if st.sidebar.button(button_text, key=f"reprocess_{video_id}", help=button_help):
                 try:
                     current_url = get_api_base_url()
                     process_payload = {"video_id": video_id}
@@ -797,14 +811,18 @@ def show_video_library():
                 except Exception as e:
                     st.sidebar.error(f"Re-processing failed: {str(e)}")
 
-        # Select button - only show if all required indexes are ready
-        if not is_active:
+        # Select button - show if video is completed (even with partial indexes)
+        if not is_active and status == "completed":
             has_required_indexes = all(idx in index_names for idx in required_indexes)
-            
-            if has_required_indexes and status == "completed":
-                if st.sidebar.button(f"Select Video", key=f"select_{video_id}", use_container_width=True):
-                    st.session_state.active_video_id = video_id
-                    st.rerun()
+
+            if has_required_indexes:
+                button_text = "Select Video"
+            else:
+                button_text = "Select Video (Partial)"
+
+            if st.sidebar.button(button_text, key=f"select_{video_id}", use_container_width=True):
+                st.session_state.active_video_id = video_id
+                st.rerun()
             
         st.sidebar.markdown("---")
 
@@ -880,18 +898,20 @@ def show_chat_interface():
                               st.session_state.domain_context != "General video analysis")
     required_indexes = get_required_indexes(has_domain_context)
     
-    # Check if video has all required indexes ready
+    # Check if video is completed (allow partial completion)
     indexes = video_info.get("indexes", [])
     index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
     has_required_indexes = all(idx in index_names for idx in required_indexes)
-    
-    if video_info.get("status") != "completed" or not has_required_indexes:
-        missing_indexes = [idx for idx in required_indexes if idx not in index_names]
-        if missing_indexes:
-            st.info(f"⏳ Video is still processing... Missing indexes: {', '.join(missing_indexes)}")
-        else:
-            st.info("⏳ Video is still processing...")
+
+    if video_info.get("status") != "completed":
+        st.info("⏳ Video is still processing...")
         return
+
+    # Show warning if some indexes are missing but allow use of available indexes
+    if not has_required_indexes:
+        missing_indexes = [idx for idx in required_indexes if idx not in index_names]
+        st.warning(f"⚠️ Some indexes failed to create: {', '.join(missing_indexes)}. You can still use the video with available indexes.")
+        st.info("💡 The video is usable but may have reduced search capabilities.")
     
     
     # Display chat history
