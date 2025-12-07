@@ -571,12 +571,17 @@ def upload_video_section():
     """, unsafe_allow_html=True)
     
     uploaded_file = st.file_uploader(
-        "Choose video file (MP4, AVI, MOV, MKV)",
-        type=["mp4", "avi", "mov", "mkv"],
+        "Choose MP4 video file",
+        type=["mp4"],
         key="video_uploader",
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        help="Only MP4 files are supported. Other formats may cause processing errors."
     )
-    
+
+    # Add clear warning about MP4 requirement
+    if uploaded_file is None:
+        st.info("ℹ️ **Important**: Only MP4 files are supported. If you have a video in another format, please convert it to MP4 first.")
+
     return uploaded_file
 
 
@@ -912,7 +917,7 @@ def show_chat_interface():
                         "query": user_query,
                         "domain_context": st.session_state.domain_context,
                     },
-                    timeout=120  # Chat can take longer
+                    timeout=1800  # Chat can take much longer for video processing (30 minutes)
                 )
                 
                 if response.status_code == 200:
@@ -939,7 +944,7 @@ def show_chat_interface():
             except requests.exceptions.Timeout:
                 st.session_state.chat_history.append({
                     "role": "assistant",
-                    "content": "❌ Request timed out. The backend may be slow or unresponsive. Please try again.",
+                    "content": "❌ Request timed out. Video processing may still be running in the background. Check the sidebar status and try again in a few minutes.",
                     })
             except Exception as e:
                 st.session_state.chat_history.append({
@@ -1012,11 +1017,18 @@ def main():
                                     process_payload["domain_context"] = st.session_state.domain_context
                                     process_payload["session_id"] = st.session_state.session_id
 
+                                st.info(f"🔄 Starting video processing for {video_id}...")
+                                print(f"DEBUG: Calling /process-video with payload: {process_payload}")
+
                                 process_response = requests.post(
                                     f"{current_url}/process-video",
                                     json=process_payload,
-                                    timeout=30
+                                    timeout=1800  # 30 minutes for video processing
                                 )
+
+                                print(f"DEBUG: /process-video response status: {process_response.status_code}")
+                                if process_response.text:
+                                    print(f"DEBUG: /process-video response text: {process_response.text[:500]}")
 
                                 if process_response.status_code == 200:
                                     st.session_state.uploaded_videos[video_id] = {
@@ -1026,7 +1038,41 @@ def main():
                                     }
                                     st.session_state.active_video_id = video_id
 
-                                    st.info("🔄 Video is being processed. This may take a few minutes. You can check the status in the sidebar.")
+                                    # Poll for status updates until processing completes
+                                    with st.spinner("🔄 Processing video... Please wait."):
+                                        max_polls = 120  # 2 minutes of polling (10 second intervals)
+                                        for i in range(max_polls):
+                                            try:
+                                                status_response = requests.get(f"{current_url}/video/{video_id}/status", timeout=10)
+                                                if status_response.status_code == 200:
+                                                    status_data = status_response.json()
+                                                    current_status = status_data.get("status", "processing")
+
+                                                    # Update local status
+                                                    st.session_state.uploaded_videos[video_id]["status"] = current_status
+                                                    st.session_state.uploaded_videos[video_id]["indexes"] = status_data.get("indexes_created", [])
+
+                                                    if current_status == "completed":
+                                                        st.success("✅ Video processing completed! You can now ask questions.")
+                                                        time.sleep(1)
+                                                        st.rerun()
+                                                        break
+                                                    elif current_status == "failed":
+                                                        st.error("❌ Video processing failed. Please try uploading again.")
+                                                        break
+                                                else:
+                                                    st.warning(f"⚠️ Could not check processing status (HTTP {status_response.status_code})")
+
+                                            except requests.exceptions.RequestException:
+                                                st.warning("⚠️ Could not check processing status (connection issue)")
+
+                                            # Wait before next poll
+                                            time.sleep(10)
+
+                                        else:
+                                            # If we exit the loop without completion
+                                            st.warning("⏳ Video is still processing in the background. Check the sidebar for status updates.")
+
                                     time.sleep(1)
                                     st.rerun()
                                 else:
@@ -1044,7 +1090,7 @@ def main():
                     st.error(f"❌ Cannot connect to backend at `{current_url}`")
                     st.info("**Please check:**\n1. Railway backend is running\n2. Your internet connection is active\n3. Backend URL is correct")
                 except requests.exceptions.Timeout:
-                    st.error("❌ Request timed out. The backend may be slow or unresponsive.")
+                    st.error("❌ Request timed out. Video processing may still be running. Check the sidebar for status updates.")
                 except Exception as e:
                     st.error(f"❌ Unexpected error: {str(e)}")
     
