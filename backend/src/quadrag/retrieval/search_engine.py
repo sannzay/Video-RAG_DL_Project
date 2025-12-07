@@ -146,13 +146,11 @@ class VideoSearchEngine:
                     logger.info("Collecting all audio chunks with pre-computed transcriptions...")
 
                     # Collect ALL chunks, not just a limited subset
-                    print("DEBUG: About to collect audio chunks for search")
                     all_chunks = audio_view.select(
                         audio_view.start_time_sec,
                         audio_view.end_time_sec,
                         audio_view.transcript_text,
                     ).collect()
-                    print(f"DEBUG: Audio collect completed, got {len(all_chunks)} chunks")
 
                     logger.info(f"Successfully collected {len(all_chunks)} audio chunks for comprehensive search")
 

@@ -189,7 +189,6 @@ class VideoIndexer:
             except AttributeError:
                 # Column doesn't exist, add it
                 logger.info("Adding new transcription column...")
-                print("DEBUG: About to add transcription column")
                 try:
                     audio_view.add_computed_column(
                         transcription=pxt_openai.transcriptions(
@@ -198,10 +197,8 @@ class VideoIndexer:
                         ),
                         if_exists="ignore",
                     )
-                    print("DEBUG: Transcription column added successfully")
                     logger.info("Transcription column added successfully (will compute on-demand)")
                 except Exception as e:
-                    print(f"DEBUG: Failed to add transcription column: {e}")
                     logger.error(f"Failed to add transcription column: {e}")
                     raise
 

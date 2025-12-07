@@ -85,7 +85,7 @@ if _backend_src not in sys.path and os.path.isdir(_backend_src):
 # ============================================================================
 
 import aiofiles
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -316,7 +316,7 @@ async def process_video_background(video_id: str, video_path: str):
 
 
 @app.post("/upload-video", response_model=VideoUploadResponse)
-async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_video(file: UploadFile = File(...)):
     """Upload a video file.
 
     Args:
@@ -365,9 +365,23 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
         processing_status[video_id] = ProcessingStatus.PROCESSING
         logger.info(f"Starting background processing for video {video_id}")
 
-        # Use background_tasks.add_task instead of asyncio.create_task
-        # This is the proper way to run background tasks in FastAPI
-        background_tasks.add_task(process_video_background, video_id, str(file_path))
+        # Use asyncio.create_task in a fire-and-forget manner, but ensure proper exception handling
+        task = asyncio.create_task(process_video_background(video_id, str(file_path)))
+        # Don't await the task - let it run in background
+        # Add callback to handle any unhandled exceptions
+        def handle_task_exception(task):
+            if task.done() and not task.cancelled():
+                try:
+                    # Check if there's an exception without re-raising it
+                    exception = task.exception()
+                    if exception:
+                        logger.error(f"Background task for video {video_id} failed: {exception}")
+                        processing_status[video_id] = ProcessingStatus.FAILED
+                        processing_errors[video_id] = f"Background processing failed: {str(exception)}"
+                except Exception as e:
+                    logger.error(f"Error checking task exception for video {video_id}: {e}")
+
+        task.add_done_callback(handle_task_exception)
 
         logger.info(f"Video uploaded successfully: {file_path}")
 
