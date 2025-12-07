@@ -2,7 +2,6 @@
 
 import base64
 import os
-import time
 from io import BytesIO
 from typing import Optional
 
@@ -338,41 +337,20 @@ class VideoIndexer:
             # Store them in registry for search access (avoiding Pixeltable UDF issues)
             logger.info(f"Creating domain captions for {video_id} with context: {domain_context}")
 
-            # Get frames with limit to avoid processing too many frames for large videos
-            max_frames = 30  # Limit to 30 frames max for domain processing to avoid excessive API calls
-
-            logger.info(f"Limiting domain processing to maximum {max_frames} frames")
-
-            # Get total frame count first
-            try:
-                frame_count_query = frames_view.select(pxt.functions.count())
-                total_frames = frame_count_query.collect()[0][0]
-                logger.info(f"Video has {total_frames} total frames")
-            except:
-                total_frames = "unknown"
-
-            # Get frames with limit
+            # Get all frames
             frames_data = frames_view.select(
                 frames_view.pos_msec,
                 frames_view.resized_frame
-            ).limit(max_frames).collect()
+            ).collect()
 
-            logger.info(f"Processing {len(frames_data)} frames for domain captions (limited from {total_frames} total frames)")
+            logger.info(f"Processing {len(frames_data)} frames for domain captions")
 
             # Process each frame manually with direct API calls
             domain_captions = {}
-            start_time = time.time()
-
             for i, frame_data in enumerate(frames_data):
                 try:
                     frame_image = frame_data['resized_frame']
                     pos_msec = frame_data['pos_msec']
-
-                    # Check if we've been processing too long (max 15 minutes for domain index)
-                    elapsed_time = time.time() - start_time
-                    if elapsed_time > 900:  # 15 minutes
-                        logger.warning(f"Domain index creation taking too long ({elapsed_time:.1f}s), stopping at frame {i+1}")
-                        break
 
                     # Generate caption using direct API call
                     try:
@@ -390,7 +368,7 @@ class VideoIndexer:
 Describe what you see with specific focus on elements relevant to {domain_context}.
 Be detailed about objects, actions, and visual elements that would be important in this domain context."""
 
-                        # Make synchronous API call with timeout
+                        # Make synchronous API call
                         response = client.chat.completions.create(
                             model="gpt-4o-mini",
                             messages=[{
@@ -401,8 +379,7 @@ Be detailed about objects, actions, and visual elements that would be important 
                                 ]
                             }],
                             max_tokens=200,
-                            temperature=0.3,
-                            timeout=30  # 30 second timeout per API call
+                            temperature=0.3
                         )
 
                         if response and response.choices and len(response.choices) > 0:
@@ -435,11 +412,10 @@ Be detailed about objects, actions, and visual elements that would be important 
             from quadrag.video.registry import update_domain_captions
             update_domain_captions(video_id, domain_captions, domain_context)
 
-            total_time = time.time() - start_time
-            logger.info(f"Stored {len(domain_captions)} domain captions in registry (took {total_time:.1f}s)")
+            logger.info(f"Stored {len(domain_captions)} domain captions in registry")
 
             # Log summary of all generated captions
-            logger.info(f"📋 DOMAIN CAPTIONS SUMMARY for video {video_id} (context: '{domain_context}', processed in {total_time:.1f}s):")
+            logger.info(f"📋 DOMAIN CAPTIONS SUMMARY for video {video_id} (context: '{domain_context}'):")
             for pos_msec, caption in sorted(domain_captions.items()):
                 timestamp = pos_msec / 1000.0
                 logger.info(f"  {timestamp:.1f}s: {caption}")
