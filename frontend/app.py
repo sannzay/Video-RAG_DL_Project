@@ -566,15 +566,17 @@ def upload_video_section():
                 margin: 1.5rem 0;
                 box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
         <h2 style="margin: 0 0 1rem 0; font-size: 1.5rem; color: white;">📤 Upload Video</h2>
-        <p style="margin: 0; opacity: 0.9; font-size: 0.95rem;">Upload a video file to start analyzing</p>
+        <p style="margin: 0; opacity: 0.9; font-size: 0.95rem;">Upload a <strong>.mp4</strong> video file to start analyzing</p>
+        <p style="margin: 0.5rem 0 0 0; opacity: 0.8; font-size: 0.85rem;">⚠️ Only MP4 format is supported</p>
     </div>
     """, unsafe_allow_html=True)
     
     uploaded_file = st.file_uploader(
-        "Choose video file (MP4, AVI, MOV, MKV)",
-        type=["mp4", "avi", "mov", "mkv"],
+        "Choose MP4 video file",
+        type=["mp4"],
         key="video_uploader",
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        help="Only MP4 video files are supported"
     )
     
     return uploaded_file
@@ -632,9 +634,17 @@ def show_video_library():
     with col3:
         st.metric("Processing", processing)
 
-    # Manual refresh button for debugging
-    if st.sidebar.button("🔄 Refresh Status", help="Manually refresh video processing status"):
-        st.rerun()
+    # Check if any videos are processing
+    has_processing = any(v.get("status") == "processing" for v in st.session_state.uploaded_videos.values())
+    
+    # Manual refresh button - make it more prominent when processing
+    if has_processing:
+        if st.sidebar.button("🔄 Refresh Status", help="Click to check if video processing is complete", type="primary", use_container_width=True):
+            st.rerun()
+        st.sidebar.caption("💡 Click Refresh Status to check processing progress")
+    else:
+        if st.sidebar.button("🔄 Refresh Status", help="Manually refresh video processing status"):
+            st.rerun()
     
     st.sidebar.markdown("---")
     
@@ -901,6 +911,7 @@ def show_chat_interface():
         })
         
         # Call chat API
+        chat_error = None
         with st.spinner("🤔 Thinking..."):
             try:
                 current_url = get_api_base_url()
@@ -930,24 +941,39 @@ def show_chat_interface():
                         "role": "assistant",
                         "content": f"Sorry, I encountered an error: {error_msg}",
                     })
-            except requests.exceptions.ConnectionError:
+            except requests.exceptions.ConnectionError as e:
                 current_url = get_api_base_url()
                 st.session_state.chat_history.append({
                     "role": "assistant",
                     "content": f"❌ Cannot connect to backend at `{current_url}`. Please check your connection and ensure the backend is running.",
                 })
-            except requests.exceptions.Timeout:
+                chat_error = "connection"
+            except requests.exceptions.Timeout as e:
                 st.session_state.chat_history.append({
                     "role": "assistant",
                     "content": "❌ Request timed out. The backend may be slow or unresponsive. Please try again.",
                     })
+                chat_error = "timeout"
             except Exception as e:
                 st.session_state.chat_history.append({
                     "role": "assistant",
                     "content": f"Sorry, I encountered an error: {str(e)}",
                 })
+                chat_error = "error"
         
-        st.rerun()
+        # Show retry button if there was an error
+        if chat_error:
+            if chat_error == "connection":
+                st.error("❌ Connection failed. Click Retry to try again.")
+            elif chat_error == "timeout":
+                st.error("❌ Request timed out. Click Retry to try again.")
+            else:
+                st.error("❌ An error occurred. Click Retry to try again.")
+            
+            if st.button("🔄 Retry Chat", key="retry_chat", use_container_width=True, type="primary"):
+                st.rerun()
+        else:
+            st.rerun()
 
 
 def main():
@@ -980,6 +1006,13 @@ def main():
     
     # Process upload if file selected
     if uploaded_file is not None:
+        # Validate file extension
+        file_extension = uploaded_file.name.lower().split('.')[-1] if '.' in uploaded_file.name else ''
+        if file_extension != 'mp4':
+            st.error(f"❌ Invalid file format. Only .mp4 files are supported. You uploaded: .{file_extension}")
+            st.info("Please upload a file with .mp4 extension")
+            return
+        
         file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
         st.info(f"📹 **{uploaded_file.name}** ({file_size_mb:.2f} MB)")
         
@@ -989,6 +1022,13 @@ def main():
             is_connected, message = check_api_connection()
             if not is_connected:
                 st.error(f"❌ Cannot connect to backend: {message}")
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("🔄 Retry Connection", use_container_width=True, type="primary"):
+                        st.rerun()
+                with col2:
+                    if st.button("🔧 Check Connection Details", use_container_width=True):
+                        st.info(f"**Backend URL:** `{current_url}`\n\n**Status:** {message}\n\n**Troubleshooting:**\n1. Verify Railway backend is running\n2. Check your internet connection\n3. Backend URL is correct")
                 return
             
             with st.spinner("📤 Uploading video..."):
@@ -1026,7 +1066,8 @@ def main():
                                     }
                                     st.session_state.active_video_id = video_id
 
-                                    st.info("🔄 Video is being processed. This may take a few minutes. You can check the status in the sidebar.")
+                                    st.success("✅ Video processing started!")
+                                    st.info("🔄 Video is being processed. This may take a few minutes. **Click '🔄 Refresh Status' in the sidebar** to check when processing is complete.")
                                     time.sleep(1)
                                     st.rerun()
                                 else:
@@ -1035,18 +1076,42 @@ def main():
                                         st.error(f"Error: {process_response.text}")
                             except requests.exceptions.RequestException as e:
                                 st.error(f"❌ Connection error while processing: {str(e)}")
+                                if st.button("🔄 Retry Processing", use_container_width=True, type="primary"):
+                                    st.rerun()
                     else:
                         st.error(f"❌ Failed to upload video: Status {response.status_code}")
                         if response.text:
                             st.error(f"Error: {response.text}")
+                        if st.button("🔄 Retry Upload", use_container_width=True, type="primary"):
+                            st.rerun()
                 except requests.exceptions.ConnectionError:
                     current_url = get_api_base_url()
                     st.error(f"❌ Cannot connect to backend at `{current_url}`")
                     st.info("**Please check:**\n1. Railway backend is running\n2. Your internet connection is active\n3. Backend URL is correct")
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        if st.button("🔄 Retry Connection", use_container_width=True, type="primary"):
+                            st.rerun()
+                    with col2:
+                        if st.button("🔧 Connection Help", use_container_width=True):
+                            with st.expander("Connection Troubleshooting", expanded=True):
+                                st.markdown(f"""
+                                **Backend URL:** `{current_url}`
+                                
+                                **Steps to fix:**
+                                1. Check Railway dashboard to ensure backend is running
+                                2. Verify your internet connection
+                                3. Try refreshing the page
+                                4. Check if backend URL is correct in environment variables
+                                """)
                 except requests.exceptions.Timeout:
                     st.error("❌ Request timed out. The backend may be slow or unresponsive.")
+                    if st.button("🔄 Retry Upload", use_container_width=True, type="primary"):
+                        st.rerun()
                 except Exception as e:
                     st.error(f"❌ Unexpected error: {str(e)}")
+                    if st.button("🔄 Retry", use_container_width=True, type="primary"):
+                        st.rerun()
     
     st.markdown("<br>", unsafe_allow_html=True)
     st.divider()

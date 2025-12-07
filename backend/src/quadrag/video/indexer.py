@@ -365,8 +365,13 @@ class VideoIndexer:
                         # Create domain-specific prompt
                         prompt = f"""Analyze this image in the context of: {domain_context}
 
-Describe what you see with specific focus on elements relevant to {domain_context}.
-Be detailed about objects, actions, and visual elements that would be important in this domain context."""
+Describe what you see, focusing on elements that are most relevant to understanding {domain_context}.
+- If the scene contains people, analyze their expressions, body language, and interactions
+- If the scene shows actions or objects, describe how they relate to {domain_context}
+- Highlight any visual elements that demonstrate concepts related to {domain_context}
+- Be specific about what you're observing rather than making assumptions
+
+Provide a clear, factual description of the visual content."""
 
                         # Make synchronous API call
                         response = client.chat.completions.create(

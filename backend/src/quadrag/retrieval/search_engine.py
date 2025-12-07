@@ -347,13 +347,33 @@ class VideoSearchEngine:
 
             # Score each caption against the query
             scored_captions = []
+            query_lower = query_text.lower()
+
             for pos_msec, caption in domain_captions.items():
-                # Use sequence matcher for simple text similarity
-                similarity = difflib.SequenceMatcher(None, query_text.lower(), caption.lower()).ratio()
+                caption_lower = caption.lower()
+
+                # Primary: sequence matching for overall similarity
+                sequence_similarity = difflib.SequenceMatcher(None, query_lower, caption_lower).ratio()
+
+                # Secondary: keyword matching - check if query words appear in caption
+                query_words = set(query_lower.split())
+                caption_words = set(caption_lower.split())
+
+                # Calculate word overlap
+                if query_words:
+                    word_overlap = len(query_words.intersection(caption_words)) / len(query_words)
+                else:
+                    word_overlap = 0.0
+
+                # Combined similarity: weighted average of sequence and word matching
+                combined_similarity = (sequence_similarity * 0.7) + (word_overlap * 0.3)
+
                 scored_captions.append({
                     'pos_msec': pos_msec,
                     'caption': caption,
-                    'similarity': similarity
+                    'similarity': combined_similarity,
+                    'sequence_sim': sequence_similarity,
+                    'word_overlap': word_overlap
                 })
 
             # Sort by similarity and take top_k
@@ -364,13 +384,17 @@ class VideoSearchEngine:
             logger.info(f"🔍 DOMAIN SEARCH RESULTS for '{query_text[:50]}...':")
             for i, item in enumerate(top_results[:3]):  # Show top 3 results
                 similarity_pct = item['similarity'] * 100
+                sequence_pct = item.get('sequence_sim', 0) * 100
+                overlap_pct = item.get('word_overlap', 0) * 100
                 timestamp = item['pos_msec'] / 1000.0
-                logger.info(f"  #{i+1} ({similarity_pct:.1f}%): {timestamp:.1f}s - {item['caption'][:100]}{'...' if len(item['caption']) > 100 else ''}")
+                logger.info(f"  #{i+1} ({similarity_pct:.1f}% seq:{sequence_pct:.1f}% word:{overlap_pct:.1f}%): {timestamp:.1f}s - {item['caption'][:100]}{'...' if len(item['caption']) > 100 else ''}")
 
             # Convert to RetrievalResult
             retrieval_results = []
             for item in top_results:
-                if item['similarity'] > 0.1:  # Only include results with some similarity
+                # Lower threshold for domain captions since they're long and detailed
+                # Accept any result with similarity > 0.01 (1%) as domain captions are comprehensive
+                if item['similarity'] > 0.01:
                     retrieval_results.append(
                         RetrievalResult(
                             content=item['caption'],
