@@ -792,11 +792,20 @@ async def chat(request: ChatRequest):
             from quadrag.retrieval.search_engine import VideoSearchEngine
             search_engine = VideoSearchEngine(request.video_id, request.session_id)
 
-            # Search all indexes
-            search_results = search_engine.search_all_indexes(
-                query_text=request.query,
-                use_domain=request.domain_context is not None,
-            )
+            # Check if specific indexes were requested
+            if request.indexes:
+                # Search only the specified indexes
+                search_results = search_engine.search_selective_indexes(
+                    query_text=request.query,
+                    indexes_to_use=request.indexes,
+                )
+                logger.info(f"Selective search requested for indexes: {[idx.value for idx in request.indexes]}")
+            else:
+                # Search all indexes (original behavior)
+                search_results = search_engine.search_all_indexes(
+                    query_text=request.query,
+                    use_domain=request.domain_context is not None,
+                )
 
             # Debug: Log search results
             total_results = sum(len(results) for results in search_results.values())

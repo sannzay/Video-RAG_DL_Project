@@ -76,6 +76,7 @@ class ChatRequest(BaseModel):
     video_id: str
     query: str
     domain_context: Optional[str] = None
+    indexes: Optional[list[IndexType]] = None
 
 
 class ChatResponse(BaseModel):
