@@ -844,10 +844,22 @@ def show_testing_interface():
 
     # Check if video has required indexes for testing
     indexes = video_info.get("indexes", [])
-    index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
-    has_audio = "AUDIO" in index_names
-    has_description = "DESCRIPTION" in index_names
-    has_domain = "DOMAIN" in index_names
+    # Convert indexes to lowercase strings for comparison
+    index_names = []
+    for idx in indexes:
+        if isinstance(idx, str):
+            # Already a string, convert to lowercase
+            index_names.append(idx.lower())
+        else:
+            # Enum or other object, try to get string representation
+            if hasattr(idx, 'value'):
+                index_names.append(str(idx.value).lower())
+            else:
+                index_names.append(str(idx).lower())
+
+    has_audio = "audio" in index_names
+    has_description = "description" in index_names
+    has_domain = "domain" in index_names
 
     if not has_audio:
         st.error("❌ This video doesn't have an Audio index. Cannot perform testing.")
@@ -961,7 +973,7 @@ def show_testing_interface():
                     st.session_state.active_video_id,
                     results["query"],
                     st.session_state.domain_context,
-                    ["AUDIO"]
+                    ["audio"]
                 )
                 if "error" in result:
                     results["audio_only"] = {"status": "error", "error": result["error"]}
@@ -970,7 +982,7 @@ def show_testing_interface():
 
             if results["audio_desc"]["status"] == "processing":
                 # Query with audio + description indexes
-                indexes = ["AUDIO", "DESCRIPTION"]
+                indexes = ["audio", "description"]
                 result = query_backend_with_indexes(
                     st.session_state.active_video_id,
                     results["query"],
@@ -984,9 +996,9 @@ def show_testing_interface():
 
             if results["complete"]["status"] == "processing":
                 # Query with all indexes
-                indexes = ["AUDIO", "DESCRIPTION"]
+                indexes = ["audio", "description"]
                 if has_domain:
-                    indexes.append("DOMAIN")
+                    indexes.append("domain")
                 result = query_backend_with_indexes(
                     st.session_state.active_video_id,
                     results["query"],

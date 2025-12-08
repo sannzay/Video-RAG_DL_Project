@@ -786,47 +786,67 @@ async def chat(request: ChatRequest):
         if not get_video_processor().video_exists(request.video_id):
             raise HTTPException(status_code=404, detail="Video not found or not processed")
 
-        # Run search directly in async context since Pixeltable needs proper event loop
+        # Run search in separate thread to avoid event loop conflicts with Pixeltable
+        def _run_search_in_thread():
+            """Run search operations in a separate thread with its own event loop."""
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            try:
+                # Initialize search engine
+                from quadrag.retrieval.search_engine import VideoSearchEngine
+                search_engine = VideoSearchEngine(request.video_id, request.session_id)
+
+                # Check if specific indexes were requested
+                if request.indexes:
+                    # Search only the specified indexes
+                    search_results = search_engine.search_selective_indexes(
+                        query_text=request.query,
+                        indexes_to_use=request.indexes,
+                    )
+                    logger.info(f"Selective search requested for indexes: {[idx.value for idx in request.indexes]}")
+                else:
+                    # Search all indexes (original behavior)
+                    search_results = search_engine.search_all_indexes(
+                        query_text=request.query,
+                        use_domain=request.domain_context is not None,
+                    )
+
+                # Debug: Log search results
+                total_results = sum(len(results) for results in search_results.values())
+                print(f"DEBUG: Search completed - total results: {total_results}")
+                for index_type, results in search_results.items():
+                    print(f"DEBUG: {index_type.value}: {len(results)} results")
+                    if results:
+                        for i, result in enumerate(results[:2]):  # Show first 2 results
+                            print(f"DEBUG:   Result {i}: '{result.content[:100]}...' at {result.timestamp:.1f}s (score: {result.similarity:.3f})")
+
+                # Fuse results
+                from quadrag.retrieval.fusion import get_fusion
+                fusion = get_fusion()
+                fused_results = fusion.fuse_results(search_results)
+
+                print(f"DEBUG: Fused results: {len(fused_results)}")
+
+                return fused_results
+
+            except Exception as e:
+                logger.error(f"Search failed: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                return []
+            finally:
+                try:
+                    loop.close()
+                except Exception as e:
+                    logger.warning(f"Error closing event loop: {e}")
+
+        # Run search in separate thread
         try:
-            # Initialize search engine directly
-            from quadrag.retrieval.search_engine import VideoSearchEngine
-            search_engine = VideoSearchEngine(request.video_id, request.session_id)
-
-            # Check if specific indexes were requested
-            if request.indexes:
-                # Search only the specified indexes
-                search_results = search_engine.search_selective_indexes(
-                    query_text=request.query,
-                    indexes_to_use=request.indexes,
-                )
-                logger.info(f"Selective search requested for indexes: {[idx.value for idx in request.indexes]}")
-            else:
-                # Search all indexes (original behavior)
-                search_results = search_engine.search_all_indexes(
-                    query_text=request.query,
-                    use_domain=request.domain_context is not None,
-                )
-
-            # Debug: Log search results
-            total_results = sum(len(results) for results in search_results.values())
-            print(f"DEBUG: Search completed - total results: {total_results}")
-            for index_type, results in search_results.items():
-                print(f"DEBUG: {index_type.value}: {len(results)} results")
-                if results:
-                    for i, result in enumerate(results[:2]):  # Show first 2 results
-                        print(f"DEBUG:   Result {i}: '{result.content[:100]}...' at {result.timestamp:.1f}s (score: {result.similarity:.3f})")
-
-            # Fuse results
-            from quadrag.retrieval.fusion import get_fusion
-            fusion = get_fusion()
-            fused_results = fusion.fuse_results(search_results)
-
-            print(f"DEBUG: Fused results: {len(fused_results)}")
-
+            fused_results = await asyncio.get_event_loop().run_in_executor(executor, _run_search_in_thread)
         except Exception as e:
-            logger.error(f"Search failed: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+            logger.error(f"Search execution failed: {e}")
             fused_results = []
 
         # Generate answer (this doesn't use Pixeltable, so it's fine to run async)
