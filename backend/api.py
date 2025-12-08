@@ -546,9 +546,12 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
         try:
             # Initialize Pixeltable in this thread's context
             import pixeltable as pxt
-            if not pxt.is_initialized():
+            try:
                 pxt.init()
                 logger.info("Pixeltable initialized in processing thread")
+            except Exception as e:
+                # Pixeltable might already be initialized, continue
+                logger.debug(f"Pixeltable init skipped (possibly already initialized): {e}")
 
             # Run the async Pixeltable operations in this thread's loop
             loop.run_until_complete(_run_pixeltable_ops_async(
@@ -788,16 +791,18 @@ async def chat(request: ChatRequest):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-            try:
                 # Initialize Pixeltable in this thread's context for search operations
                 import pixeltable as pxt
-                if not pxt.is_initialized():
+                try:
                     pxt.init()
                     logger.info("Pixeltable initialized in search thread")
+                except Exception as e:
+                    # Pixeltable might already be initialized, continue
+                    logger.debug(f"Pixeltable init skipped (possibly already initialized): {e}")
 
                 # Initialize search engine
-                from quadrag.retrieval.search_engine import VideoSearchEngine
-                search_engine = VideoSearchEngine(request.video_id, request.session_id)
+            from quadrag.retrieval.search_engine import VideoSearchEngine
+            search_engine = VideoSearchEngine(request.video_id, request.session_id)
 
                 # Check if specific indexes were requested
                 if request.indexes:
@@ -809,33 +814,33 @@ async def chat(request: ChatRequest):
                     logger.info(f"Selective search requested for indexes: {[idx.value for idx in request.indexes]}")
                 else:
                     # Search all indexes (original behavior)
-                    search_results = search_engine.search_all_indexes(
-                        query_text=request.query,
-                        use_domain=request.domain_context is not None,
-                    )
+            search_results = search_engine.search_all_indexes(
+                query_text=request.query,
+                use_domain=request.domain_context is not None,
+            )
 
-                # Debug: Log search results
-                total_results = sum(len(results) for results in search_results.values())
-                print(f"DEBUG: Search completed - total results: {total_results}")
-                for index_type, results in search_results.items():
-                    print(f"DEBUG: {index_type.value}: {len(results)} results")
-                    if results:
-                        for i, result in enumerate(results[:2]):  # Show first 2 results
-                            print(f"DEBUG:   Result {i}: '{result.content[:100]}...' at {result.timestamp:.1f}s (score: {result.similarity:.3f})")
+            # Debug: Log search results
+            total_results = sum(len(results) for results in search_results.values())
+            print(f"DEBUG: Search completed - total results: {total_results}")
+            for index_type, results in search_results.items():
+                print(f"DEBUG: {index_type.value}: {len(results)} results")
+                if results:
+                    for i, result in enumerate(results[:2]):  # Show first 2 results
+                        print(f"DEBUG:   Result {i}: '{result.content[:100]}...' at {result.timestamp:.1f}s (score: {result.similarity:.3f})")
 
-                # Fuse results
-                from quadrag.retrieval.fusion import get_fusion
-                fusion = get_fusion()
-                fused_results = fusion.fuse_results(search_results)
+            # Fuse results
+            from quadrag.retrieval.fusion import get_fusion
+            fusion = get_fusion()
+            fused_results = fusion.fuse_results(search_results)
 
-                print(f"DEBUG: Fused results: {len(fused_results)}")
+            print(f"DEBUG: Fused results: {len(fused_results)}")
 
                 return fused_results
 
-            except Exception as e:
-                logger.error(f"Search failed: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
+        except Exception as e:
+            logger.error(f"Search failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
                 return []
             finally:
                 try:

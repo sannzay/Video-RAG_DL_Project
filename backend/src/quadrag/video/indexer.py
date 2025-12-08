@@ -48,8 +48,11 @@ class VideoIndexer:
         """
         # Initialize Pixeltable in this thread's context
         import pixeltable as pxt
-        if not pxt.is_initialized():
+        try:
             pxt.init()
+        except Exception as e:
+            # Pixeltable might already be initialized, continue
+            pass
 
         try:
             logger.info(f"Creating Image Index for video {video_id}")
@@ -150,8 +153,11 @@ class VideoIndexer:
         """
         # Initialize Pixeltable in this thread's context
         import pixeltable as pxt
-        if not pxt.is_initialized():
+        try:
             pxt.init()
+        except Exception as e:
+            # Pixeltable might already be initialized, continue
+            pass
 
         try:
             logger.info(f"Creating Audio Index for video {video_id}")
@@ -266,8 +272,11 @@ class VideoIndexer:
         """
         # Initialize Pixeltable in this thread's context
         import pixeltable as pxt
-        if not pxt.is_initialized():
+        try:
             pxt.init()
+        except Exception as e:
+            # Pixeltable might already be initialized, continue
+            pass
 
         try:
             logger.info(f"Creating Description Index for video {video_id}")
@@ -327,8 +336,11 @@ class VideoIndexer:
         """
         # Initialize Pixeltable in this thread's context
         import pixeltable as pxt
-        if not pxt.is_initialized():
+        try:
             pxt.init()
+        except Exception as e:
+            # Pixeltable might already be initialized, continue
+            pass
 
         with monitor_processing(f"Domain index creation for {video_id}"):
             try:
