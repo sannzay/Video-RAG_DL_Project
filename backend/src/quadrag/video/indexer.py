@@ -46,13 +46,10 @@ class VideoIndexer:
         Returns:
             True if successful
         """
-        # Ensure Pixeltable is initialized before any operations
-        try:
-            from ...api import _ensure_pixeltable
-            _ensure_pixeltable()
-        except ImportError:
-            # If we're not in the API context, Pixeltable should already be initialized
-            pass
+        # Initialize Pixeltable in this thread's context
+        import pixeltable as pxt
+        if not pxt.is_initialized():
+            pxt.init()
 
         try:
             logger.info(f"Creating Image Index for video {video_id}")
@@ -151,13 +148,10 @@ class VideoIndexer:
         Returns:
             True if successful
         """
-        # Ensure Pixeltable is initialized before any operations
-        try:
-            from ...api import _ensure_pixeltable
-            _ensure_pixeltable()
-        except ImportError:
-            # If we're not in the API context, Pixeltable should already be initialized
-            pass
+        # Initialize Pixeltable in this thread's context
+        import pixeltable as pxt
+        if not pxt.is_initialized():
+            pxt.init()
 
         try:
             logger.info(f"Creating Audio Index for video {video_id}")
@@ -270,13 +264,10 @@ class VideoIndexer:
         Returns:
             True if successful
         """
-        # Ensure Pixeltable is initialized before any operations
-        try:
-            from ...api import _ensure_pixeltable
-            _ensure_pixeltable()
-        except ImportError:
-            # If we're not in the API context, Pixeltable should already be initialized
-            pass
+        # Initialize Pixeltable in this thread's context
+        import pixeltable as pxt
+        if not pxt.is_initialized():
+            pxt.init()
 
         try:
             logger.info(f"Creating Description Index for video {video_id}")
@@ -334,13 +325,10 @@ class VideoIndexer:
         Returns:
             True if successful
         """
-        # Ensure Pixeltable is initialized before any operations
-        try:
-            from ...api import _ensure_pixeltable
-            _ensure_pixeltable()
-        except ImportError:
-            # If we're not in the API context, Pixeltable should already be initialized
-            pass
+        # Initialize Pixeltable in this thread's context
+        import pixeltable as pxt
+        if not pxt.is_initialized():
+            pxt.init()
 
         with monitor_processing(f"Domain index creation for {video_id}"):
             try:

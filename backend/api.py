@@ -57,19 +57,8 @@ import asyncio
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())  # Use standard asyncio, not uvloop
 print("INFO: Set asyncio event loop policy to DefaultEventLoopPolicy")
 
-# Step 5: Defer Pixeltable initialization until needed to avoid asyncio conflicts
-_pixeltable_initialized = False
-def _ensure_pixeltable():
-    global _pixeltable_initialized
-    if not _pixeltable_initialized:
-        try:
-            import pixeltable as pxt
-            pxt.init()  # Initialize Pixeltable when first needed
-            _pixeltable_initialized = True
-            print("INFO: Pixeltable initialized successfully (lazy)")
-        except Exception as e:
-            print(f"WARNING: Could not initialize Pixeltable: {e}")
-            raise
+# Step 5: Pixeltable will be initialized in each thread to avoid asyncio conflicts
+# Removed lazy initialization to prevent event loop conflicts
 
 # Step 6: Set up API keys for Pixeltable
 try:
@@ -555,6 +544,12 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
         asyncio.set_event_loop(loop)
 
         try:
+            # Initialize Pixeltable in this thread's context
+            import pixeltable as pxt
+            if not pxt.is_initialized():
+                pxt.init()
+                logger.info("Pixeltable initialized in processing thread")
+
             # Run the async Pixeltable operations in this thread's loop
             loop.run_until_complete(_run_pixeltable_ops_async(
                 video_id, video_path, domain_context, session_id, indexes_created_list
@@ -794,6 +789,12 @@ async def chat(request: ChatRequest):
             asyncio.set_event_loop(loop)
 
             try:
+                # Initialize Pixeltable in this thread's context for search operations
+                import pixeltable as pxt
+                if not pxt.is_initialized():
+                    pxt.init()
+                    logger.info("Pixeltable initialized in search thread")
+
                 # Initialize search engine
                 from quadrag.retrieval.search_engine import VideoSearchEngine
                 search_engine = VideoSearchEngine(request.video_id, request.session_id)
