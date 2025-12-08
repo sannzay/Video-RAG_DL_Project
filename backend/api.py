@@ -3,6 +3,7 @@
 import asyncio
 import os
 import sys
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -523,7 +524,7 @@ async def reprocess_video(request: VideoProcessRequest):
 
 
 async def _process_video_async(video_id: str, domain_context: Optional[str] = None, session_id: Optional[str] = None):
-    """Async video processing function (runs in event loop).
+    """Process video and create indexes using thread isolation for Pixeltable operations.
 
     Args:
         video_id: Video identifier
@@ -541,14 +542,38 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
 
     video_path = str(video_files[0])
 
-    # Wrap Pixeltable operations in a task to ensure proper async context
+    # Initialize result tracking
     indexes_created_list = []
-    
-    async def _run_pixeltable_ops():
-        """Run Pixeltable operations in a proper async task context."""
-        nonlocal indexes_created_list
+    processing_error = None
 
+    def _sync_pixeltable_processing():
+        """Run Pixeltable operations in a separate thread with its own event loop."""
+        nonlocal indexes_created_list, processing_error
+
+        # Create a new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            # Run the async Pixeltable operations in this thread's loop
+            loop.run_until_complete(_run_pixeltable_ops_async(
+                video_id, video_path, domain_context, session_id, indexes_created_list
+            ))
+        except Exception as e:
+            processing_error = str(e)
+            logger.error(f"Pixeltable processing failed for {video_id}: {e}")
+        finally:
+            try:
+                loop.close()
+            except Exception as e:
+                logger.warning(f"Error closing event loop for {video_id}: {e}")
+
+    async def _run_pixeltable_ops_async(video_id: str, video_path: str,
+                                       domain_context: Optional[str], session_id: Optional[str],
+                                       indexes_created_list: list):
+        """Async wrapper for Pixeltable operations."""
         from quadrag.utils import monitor_processing
+
         with monitor_processing(f"Complete video processing for {video_id}"):
             # Process video (creates table and inserts video)
             logger.info(f"Processing video: {video_path}")
@@ -557,7 +582,7 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
         # Initialize index errors tracking for this video
         clear_index_errors(video_id)
 
-        # Create Audio Index (prioritize this over image index due to PyTorch compatibility issues)
+        # Create Audio Index
         logger.info(f"Creating Audio Index for {video_id}")
         try:
             if get_indexer_lazy().create_audio_index(video_id):
@@ -587,7 +612,7 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
             set_index_error(video_id, IndexType.IMAGE, error_msg)
             logger.error(f"Image Index creation failed for {video_id}: {error_msg}")
 
-        # Create Description Index (only if Image Index succeeded, as it depends on resized_frame)
+        # Create Description Index (only if Image Index succeeded)
         if IndexType.IMAGE in indexes_created_list:
             logger.info(f"Creating Description Index for {video_id}")
             try:
@@ -627,9 +652,24 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
         else:
             logger.info(f"Skipping Domain Index (requires Image Index)")
 
-    # Run Pixeltable operations as a task to ensure proper context
-    task = asyncio.create_task(_run_pixeltable_ops())
-    await task
+    # Run Pixeltable operations in a separate daemon thread to avoid event loop corruption
+    processing_thread = threading.Thread(target=_sync_pixeltable_processing, daemon=True)
+    processing_thread.start()
+
+    # Wait for the thread to complete (with timeout)
+    processing_thread.join(timeout=1800)  # 30 minute timeout
+
+    if processing_thread.is_alive():
+        logger.error(f"Processing thread for {video_id} timed out after 30 minutes")
+        processing_status[video_id] = ProcessingStatus.FAILED
+        processing_errors[video_id] = "Processing timed out"
+        return
+
+    if processing_error:
+        processing_status[video_id] = ProcessingStatus.FAILED
+        processing_errors[video_id] = processing_error
+        logger.error(f"Processing failed for {video_id}: {processing_error}")
+        return
 
     # Mark as completed even if some indexes failed (partial success)
     if indexes_created_list:
