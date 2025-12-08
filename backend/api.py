@@ -791,33 +791,33 @@ async def chat(request: ChatRequest):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-                # Initialize Pixeltable in this thread's context for search operations
-                import pixeltable as pxt
-                try:
-                    pxt.init()
-                    logger.info("Pixeltable initialized in search thread")
-                except Exception as e:
-                    # Pixeltable might already be initialized, continue
-                    logger.debug(f"Pixeltable init skipped (possibly already initialized): {e}")
+            # Initialize Pixeltable in this thread's context for search operations
+            import pixeltable as pxt
+            try:
+                pxt.init()
+                logger.info("Pixeltable initialized in search thread")
+            except Exception as e:
+                # Pixeltable might already be initialized, continue
+                logger.debug(f"Pixeltable init skipped (possibly already initialized): {e}")
 
-                # Initialize search engine
+            # Initialize search engine
             from quadrag.retrieval.search_engine import VideoSearchEngine
             search_engine = VideoSearchEngine(request.video_id, request.session_id)
 
-                # Check if specific indexes were requested
-                if request.indexes:
-                    # Search only the specified indexes
-                    search_results = search_engine.search_selective_indexes(
-                        query_text=request.query,
-                        indexes_to_use=request.indexes,
-                    )
-                    logger.info(f"Selective search requested for indexes: {[idx.value for idx in request.indexes]}")
-                else:
-                    # Search all indexes (original behavior)
-            search_results = search_engine.search_all_indexes(
-                query_text=request.query,
-                use_domain=request.domain_context is not None,
-            )
+            # Check if specific indexes were requested
+            if request.indexes:
+                # Search only the specified indexes
+                search_results = search_engine.search_selective_indexes(
+                    query_text=request.query,
+                    indexes_to_use=request.indexes,
+                )
+                logger.info(f"Selective search requested for indexes: {[idx.value for idx in request.indexes]}")
+            else:
+                # Search all indexes (original behavior)
+                search_results = search_engine.search_all_indexes(
+                    query_text=request.query,
+                    use_domain=request.domain_context is not None,
+                )
 
             # Debug: Log search results
             total_results = sum(len(results) for results in search_results.values())
@@ -835,18 +835,7 @@ async def chat(request: ChatRequest):
 
             print(f"DEBUG: Fused results: {len(fused_results)}")
 
-                return fused_results
-
-        except Exception as e:
-            logger.error(f"Search failed: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-                return []
-            finally:
-                try:
-                    loop.close()
-                except Exception as e:
-                    logger.warning(f"Error closing event loop: {e}")
+            return fused_results
 
         # Run search in separate thread
         try:
