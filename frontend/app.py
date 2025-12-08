@@ -937,12 +937,73 @@ def show_chat_interface():
     index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
     has_required_indexes = all(idx in index_names for idx in required_indexes)
 
+    # Get index errors from API for the active video
+    index_errors = {}
+    try:
+        current_url = get_api_base_url()
+        status_response = requests.get(f"{current_url}/video/{st.session_state.active_video_id}/status", timeout=5)
+        if status_response.status_code == 200:
+            status_data = status_response.json()
+            index_errors = status_data.get("index_errors", {})
+    except requests.exceptions.RequestException:
+        pass  # If status check fails, continue without errors
+    
+    # Check for errors and missing indexes
+    all_possible_indexes = ["AUDIO", "IMAGE", "DESCRIPTION", "DOMAIN"]
+    has_errors = index_errors and any(idx in index_errors for idx in all_possible_indexes)
+    has_missing_indexes = not has_required_indexes
+    
     # Show warning if some indexes are missing but allow use of available indexes
     if not has_required_indexes:
         missing_indexes = [idx for idx in required_indexes if idx not in index_names]
         st.warning(f"⚠️ Some indexes failed to create: {', '.join(missing_indexes)}. You can still use the video with available indexes.")
         st.info("💡 The video is usable but may have reduced search capabilities.")
     
+    # Show index errors if any
+    if has_errors:
+        st.markdown("**Index Errors:**")
+        for idx_name in all_possible_indexes:
+            if idx_name in index_errors:
+                with st.expander(f"❌ {idx_name} Error", expanded=False):
+                    st.error(index_errors[idx_name][:500] + ("..." if len(index_errors[idx_name]) > 500 else ""))
+    
+    # Re-process button for failed indexes or missing required indexes (same as sidebar)
+    if has_errors or (video_info.get("status") == "completed" and has_missing_indexes):
+        missing_list = [idx for idx in required_indexes if idx not in index_names] if has_missing_indexes else []
+        error_list = list(index_errors.keys()) if has_errors else []
+        
+        all_missing = list(set(missing_list + error_list))
+        
+        if all_missing:
+            button_text = f"🔄 Re-process ({', '.join(all_missing)})"
+            button_help = f"Retry creating failed indexes: {', '.join(all_missing)}"
+        else:
+            button_text = "🔄 Re-process Video"
+            button_help = "Retry creating failed or missing indexes"
+        
+        if st.button(button_text, key="reprocess_chat", help=button_help, use_container_width=True, type="primary"):
+            try:
+                current_url = get_api_base_url()
+                process_payload = {"video_id": st.session_state.active_video_id}
+                if st.session_state.get("domain_context"):
+                    process_payload["domain_context"] = st.session_state.domain_context
+                    process_payload["session_id"] = st.session_state.session_id
+                
+                response = requests.post(
+                    f"{current_url}/reprocess-video",
+                    json=process_payload,
+                    timeout=30
+                )
+                if response.status_code == 200:
+                    st.success("🔄 Re-processing started! The video will be re-processed in the background.")
+                    st.info("💡 Check the sidebar or refresh status to see when processing completes.")
+                    st.rerun()
+                else:
+                    st.error(f"Failed to start re-processing: {response.status_code}")
+                    if response.text:
+                        st.error(f"Error: {response.text[:200]}")
+            except Exception as e:
+                st.error(f"Re-processing failed: {str(e)}")
     
     # Display chat history
     if st.session_state.chat_history:
