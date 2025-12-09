@@ -454,41 +454,4 @@ class VideoSearchEngine:
 
         return results
 
-    def search_selective_indexes(
-        self,
-        query_text: str,
-        indexes_to_use: list[IndexType],
-        query_image: Optional[Image.Image] = None,
-    ) -> Dict[IndexType, List[RetrievalResult]]:
-        """Search only the specified indexes.
-
-        Args:
-            query_text: Query text
-            indexes_to_use: List of index types to search
-            query_image: Optional query image
-
-        Returns:
-            Dictionary mapping IndexType to list of results (only for requested indexes)
-        """
-        results = {}
-
-        # Search only the requested indexes
-        if IndexType.AUDIO in indexes_to_use:
-            results[IndexType.AUDIO] = self.search_audio_index(query_text)
-
-        if IndexType.DESCRIPTION in indexes_to_use:
-            results[IndexType.DESCRIPTION] = self.search_description_index(query_text)
-
-        if IndexType.DOMAIN in indexes_to_use and self.session_id:
-            results[IndexType.DOMAIN] = self.search_domain_index(query_text)
-        elif IndexType.DOMAIN in indexes_to_use:
-            results[IndexType.DOMAIN] = []
-
-        if IndexType.IMAGE in indexes_to_use and query_image:
-            results[IndexType.IMAGE] = self.search_image_index(query_image)
-        elif IndexType.IMAGE in indexes_to_use:
-            results[IndexType.IMAGE] = []
-
-        return results
-
 

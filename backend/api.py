@@ -57,8 +57,19 @@ import asyncio
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())  # Use standard asyncio, not uvloop
 print("INFO: Set asyncio event loop policy to DefaultEventLoopPolicy")
 
-# Step 5: Pixeltable will be initialized in each thread to avoid asyncio conflicts
-# Removed lazy initialization to prevent event loop conflicts
+# Step 5: Defer Pixeltable initialization until needed to avoid asyncio conflicts
+_pixeltable_initialized = False
+def _ensure_pixeltable():
+    global _pixeltable_initialized
+    if not _pixeltable_initialized:
+        try:
+            import pixeltable as pxt
+            pxt.init()  # Initialize Pixeltable when first needed
+            _pixeltable_initialized = True
+            print("INFO: Pixeltable initialized successfully (lazy)")
+        except Exception as e:
+            print(f"WARNING: Could not initialize Pixeltable: {e}")
+            raise
 
 # Step 6: Set up API keys for Pixeltable
 try:
@@ -544,15 +555,6 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
         asyncio.set_event_loop(loop)
 
         try:
-            # Initialize Pixeltable in this thread's context
-            import pixeltable as pxt
-            try:
-                pxt.init()
-                logger.info("Pixeltable initialized in processing thread")
-            except Exception as e:
-                # Pixeltable might already be initialized, continue
-                logger.debug(f"Pixeltable init skipped (possibly already initialized): {e}")
-
             # Run the async Pixeltable operations in this thread's loop
             loop.run_until_complete(_run_pixeltable_ops_async(
                 video_id, video_path, domain_context, session_id, indexes_created_list
@@ -784,40 +786,17 @@ async def chat(request: ChatRequest):
         if not get_video_processor().video_exists(request.video_id):
             raise HTTPException(status_code=404, detail="Video not found or not processed")
 
-        # Run search in separate thread to avoid event loop conflicts with Pixeltable
-        def _run_search_in_thread():
-            """Run search operations in a separate thread with its own event loop."""
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            # Initialize Pixeltable in this thread's context for search operations
-            import pixeltable as pxt
-            try:
-                pxt.init()
-                logger.info("Pixeltable initialized in search thread")
-            except Exception as e:
-                # Pixeltable might already be initialized, continue
-                logger.debug(f"Pixeltable init skipped (possibly already initialized): {e}")
-
-            # Initialize search engine
+        # Run search directly in async context since Pixeltable needs proper event loop
+        try:
+            # Initialize search engine directly
             from quadrag.retrieval.search_engine import VideoSearchEngine
             search_engine = VideoSearchEngine(request.video_id, request.session_id)
 
-            # Check if specific indexes were requested
-            if request.indexes:
-                # Search only the specified indexes
-                search_results = search_engine.search_selective_indexes(
-                    query_text=request.query,
-                    indexes_to_use=request.indexes,
-                )
-                logger.info(f"Selective search requested for indexes: {[idx.value for idx in request.indexes]}")
-            else:
-                # Search all indexes (original behavior)
-                search_results = search_engine.search_all_indexes(
-                    query_text=request.query,
-                    use_domain=request.domain_context is not None,
-                )
+            # Search all indexes
+            search_results = search_engine.search_all_indexes(
+                query_text=request.query,
+                use_domain=request.domain_context is not None,
+            )
 
             # Debug: Log search results
             total_results = sum(len(results) for results in search_results.values())
@@ -835,13 +814,10 @@ async def chat(request: ChatRequest):
 
             print(f"DEBUG: Fused results: {len(fused_results)}")
 
-            return fused_results
-
-        # Run search in separate thread
-        try:
-            fused_results = await asyncio.get_event_loop().run_in_executor(executor, _run_search_in_thread)
         except Exception as e:
-            logger.error(f"Search execution failed: {e}")
+            logger.error(f"Search failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             fused_results = []
 
         # Generate answer (this doesn't use Pixeltable, so it's fine to run async)

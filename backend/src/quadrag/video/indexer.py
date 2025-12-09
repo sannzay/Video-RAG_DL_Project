@@ -46,12 +46,12 @@ class VideoIndexer:
         Returns:
             True if successful
         """
-        # Initialize Pixeltable in this thread's context
-        import pixeltable as pxt
+        # Ensure Pixeltable is initialized before any operations
         try:
-            pxt.init()
-        except Exception as e:
-            # Pixeltable might already be initialized, continue
+            from ...api import _ensure_pixeltable
+            _ensure_pixeltable()
+        except ImportError:
+            # If we're not in the API context, Pixeltable should already be initialized
             pass
 
         try:
@@ -151,12 +151,12 @@ class VideoIndexer:
         Returns:
             True if successful
         """
-        # Initialize Pixeltable in this thread's context
-        import pixeltable as pxt
+        # Ensure Pixeltable is initialized before any operations
         try:
-            pxt.init()
-        except Exception as e:
-            # Pixeltable might already be initialized, continue
+            from ...api import _ensure_pixeltable
+            _ensure_pixeltable()
+        except ImportError:
+            # If we're not in the API context, Pixeltable should already be initialized
             pass
 
         try:
@@ -270,12 +270,12 @@ class VideoIndexer:
         Returns:
             True if successful
         """
-        # Initialize Pixeltable in this thread's context
-        import pixeltable as pxt
+        # Ensure Pixeltable is initialized before any operations
         try:
-            pxt.init()
-        except Exception as e:
-            # Pixeltable might already be initialized, continue
+            from ...api import _ensure_pixeltable
+            _ensure_pixeltable()
+        except ImportError:
+            # If we're not in the API context, Pixeltable should already be initialized
             pass
 
         try:
@@ -334,12 +334,12 @@ class VideoIndexer:
         Returns:
             True if successful
         """
-        # Initialize Pixeltable in this thread's context
-        import pixeltable as pxt
+        # Ensure Pixeltable is initialized before any operations
         try:
-            pxt.init()
-        except Exception as e:
-            # Pixeltable might already be initialized, continue
+            from ...api import _ensure_pixeltable
+            _ensure_pixeltable()
+        except ImportError:
+            # If we're not in the API context, Pixeltable should already be initialized
             pass
 
         with monitor_processing(f"Domain index creation for {video_id}"):
