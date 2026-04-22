@@ -16,16 +16,26 @@ class Settings(BaseSettings):
     )
 
     # === API Keys (set via environment variables) ===
-    GROQ_API_KEY: str = ""  # Set in Railway environment variables
-    OPENAI_API_KEY: str = ""  # Set in Railway environment variables
-    GOOGLE_API_KEY: str = ""  # Set in Railway environment variables
+    # OpenAI is still required for Whisper (audio index) and text-embedding-3-small
+    # (all semantic search indexes). OpenRouter handles chat answers + frame
+    # vision captions — neither of which OpenAI's Tier-1 TPM limits work for.
+    OPENAI_API_KEY: str = ""        # Whisper + embeddings. Keep.
+    OPENROUTER_API_KEY: str = ""    # Chat answers + vision captions.
+    GOOGLE_API_KEY: str = ""        # Legacy — unused by active code.
+    GROQ_API_KEY: str = ""          # Legacy — Groq was replaced by OpenRouter; env var accepted for .env compat.
 
     # === Model Configuration ===
-    AUDIO_TRANSCRIPT_MODEL: str = "whisper-1"
-    IMAGE_CAPTION_MODEL: str = "gpt-4o-mini"
-    TEXT_EMBEDDING_MODEL: str = "text-embedding-3-small"
-    IMAGE_EMBEDDING_MODEL: str = "openai/clip-vit-base-patch32"
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    AUDIO_TRANSCRIPT_MODEL: str = "whisper-1"                        # OpenAI
+    TEXT_EMBEDDING_MODEL: str = "text-embedding-3-small"             # OpenAI
+    IMAGE_EMBEDDING_MODEL: str = "openai/clip-vit-base-patch32"      # Local CLIP
+    # OpenRouter routes below. Change via env to try other providers.
+    IMAGE_CAPTION_MODEL: str = "google/gemini-2.0-flash-001"         # OpenRouter — vision
+    CHAT_MODEL: str = "meta-llama/llama-3.3-70b-instruct"            # OpenRouter — chat answer
+    # Legacy alias; still read by rag_generator until callers are migrated.
+    GROQ_MODEL: str = "meta-llama/llama-3.3-70b-instruct"
+
+    # OpenRouter base URL. Override to point at a private proxy if desired.
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
     # === Video Processing Configuration ===
     SPLIT_FRAMES_COUNT: int = 20  # Cost-safe default; calculate_frame_count overrides per-duration

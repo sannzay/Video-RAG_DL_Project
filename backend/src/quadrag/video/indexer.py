@@ -13,7 +13,11 @@ from pixeltable.functions.video import legacy_frame_iterator
 
 from quadrag.config import get_settings
 from quadrag.utils import calculate_frame_count, monitor_processing
-from quadrag.video.functions import extract_text_from_chunk, resize_image
+from quadrag.video.functions import (
+    describe_via_openrouter,
+    extract_text_from_chunk,
+    resize_image,
+)
 from quadrag.video.registry import (
     add_domain_view,
     build_domain_view_name,
@@ -304,22 +308,19 @@ class VideoIndexer:
                 logger.error(f"Frames view not found: {e}. Make sure Image Index is created first.")
                 return False
 
-            # Step 9: use Pixeltable's native async vision UDF instead of our custom
-            # synchronous one. Pixeltable runs these concurrently with adaptive
-            # rate-limit throttling from OpenAI's response headers, which is the
-            # main performance lever for per-frame description. Prompt is a literal
-            # string; the image comes from the view column.
-            logger.info("Adding description column via pxt_openai.vision (async + throttled)")
+            # Vision captions now route through OpenRouter (not OpenAI directly).
+            # OpenAI's Tier-1 TPM was too tight for back-to-back description +
+            # domain index builds; OpenRouter's provider rate limits on
+            # gemini-2.0-flash / claude-haiku / gpt-4o-mini are more forgiving.
+            logger.info(f"Adding description column via OpenRouter model: {settings.IMAGE_CAPTION_MODEL}")
             frames_view.add_computed_column(
-                description=pxt_openai.vision(
+                description=describe_via_openrouter(
+                    frames_view.resized_frame,
                     "Describe what is happening in this image in detail. "
                     "Be specific about objects, people, actions, and setting.",
-                    frames_view.resized_frame,
-                    model=settings.IMAGE_CAPTION_MODEL,
-                    model_kwargs={
-                        "max_tokens": settings.VISION_MAX_TOKENS,
-                        "temperature": settings.VISION_TEMPERATURE,
-                    },
+                    settings.IMAGE_CAPTION_MODEL,
+                    max_tokens=settings.VISION_MAX_TOKENS,
+                    temperature=settings.VISION_TEMPERATURE,
                 ),
                 if_exists="ignore",
             )
@@ -410,25 +411,22 @@ class VideoIndexer:
                     if_exists="replace_force",
                 )
 
-                # Step 9: Pixeltable-native vision UDF with the domain context baked
-                # into the prompt literal. Same async+throttled path as the
-                # description index — no per-row context column needed.
+                # OpenRouter-backed vision with the domain context baked into the
+                # prompt literal. Same async path as the description index.
                 domain_prompt = (
                     f"Analyze this image in the context of: {domain_context}\n\n"
                     f"Describe what you see with specific focus on elements relevant to "
                     f"{domain_context}. Be detailed about objects, actions, and visual "
                     f"elements that would be important in this domain context."
                 )
-                logger.info("Adding domain_caption computed column via pxt_openai.vision")
+                logger.info(f"Adding domain_caption column via OpenRouter model: {settings.IMAGE_CAPTION_MODEL}")
                 domain_view.add_computed_column(
-                    domain_caption=pxt_openai.vision(
-                        domain_prompt,
+                    domain_caption=describe_via_openrouter(
                         domain_view.resized_frame,
-                        model=settings.IMAGE_CAPTION_MODEL,
-                        model_kwargs={
-                            "max_tokens": settings.VISION_MAX_TOKENS,
-                            "temperature": settings.VISION_TEMPERATURE,
-                        },
+                        domain_prompt,
+                        settings.IMAGE_CAPTION_MODEL,
+                        max_tokens=settings.VISION_MAX_TOKENS,
+                        temperature=settings.VISION_TEMPERATURE,
                     ),
                     if_exists="replace_force",
                 )

@@ -3,7 +3,8 @@
 
 # Core
 pixeltable>=0.4.1
-groq>=0.11.0
+# OpenAI SDK is used both directly (Whisper + embeddings via Pixeltable; chat
+# completions + vision via OpenRouter's OpenAI-compatible /api/v1 endpoint).
 openai>=1.91.0
 
 # Web Framework

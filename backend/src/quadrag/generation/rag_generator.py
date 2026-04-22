@@ -1,11 +1,17 @@
-"""RAG generator using Groq LLM."""
+"""RAG generator — chat answers via OpenRouter.
+
+Uses the OpenAI Python SDK pointed at OpenRouter's OpenAI-compatible
+``/api/v1`` endpoint. The same ``openai`` package is already in our
+requirements because Pixeltable uses it for Whisper + embeddings, so there's
+no new dependency to manage.
+"""
 
 import re
 import time
 from typing import List, Optional, Tuple
 
-from groq import Groq
 from loguru import logger
+from openai import OpenAI
 
 from quadrag.config import get_settings
 from quadrag.models import ChatResponse, IndexType, RetrievalResult
@@ -76,13 +82,22 @@ def apply_citation_grounding(
 
 
 class RAGGenerator:
-    """Generates answers using retrieved context and Groq LLM."""
+    """Generates answers from retrieved multimodal context using OpenRouter.
+
+    OpenRouter is OpenAI-SDK-compatible, so we instantiate ``openai.OpenAI``
+    with a custom ``base_url``. Model choice is driven by ``settings.CHAT_MODEL``
+    (default: ``meta-llama/llama-3.3-70b-instruct`` — same underlying model
+    that Groq used to serve).
+    """
 
     def __init__(self):
         """Initialize the RAG generator."""
-        self.client = Groq(api_key=settings.GROQ_API_KEY)
-        self.model = settings.GROQ_MODEL
-        logger.info(f"RAGGenerator initialized with model: {self.model}")
+        self.client = OpenAI(
+            base_url=settings.OPENROUTER_BASE_URL,
+            api_key=settings.OPENROUTER_API_KEY,
+        )
+        self.model = settings.CHAT_MODEL
+        logger.info(f"RAGGenerator initialized with OpenRouter model: {self.model}")
 
     def build_context_prompt(
         self,
