@@ -1,0 +1,16 @@
+[theme]
+# Calm, premium-ish palette. Blue-indigo accent, neutral slate surfaces.
+# Stays readable on both desktop and mobile without fighting Streamlit's defaults.
+base = "light"
+primaryColor = "#4f46e5"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f5f7fb"
+textColor = "#0f172a"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
+
+[server]
+# Streamlit Cloud overrides this, but locally 8501 matches start_frontend.sh.
+port = 8501
