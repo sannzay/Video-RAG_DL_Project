@@ -19,28 +19,45 @@ from quadrag.models import ChatResponse, IndexType, RetrievalResult
 settings = get_settings()
 logger = logger.bind(name="RAGGenerator")
 
-# Matches ``[M:SS]`` / ``(M:SS)`` with optional fractional seconds.
-# Minutes can be any number of digits so 10+ minute videos still parse.
-# We deliberately don't try to match bare ``M:SS`` without brackets — too
-# many false positives in conversational English.
-_TIMESTAMP_RE = re.compile(r"[\[\(](\d+):(\d{2})(?:\.\d+)?[\]\)]")
+# Matches bracketed/parenthesised timestamp citations in two forms:
+#   * M:SS        ``[0:12]`` ``(2:30)`` with optional ``.f`` fractional seconds
+#   * N seconds   ``[127s]`` ``[127.9s]`` ``(200.0s)``
+#
+# Both forms happen in practice: we tell the model to cite in [M:SS], but
+# the retrieved-context block shows timestamps like "At 127.9s:", and the
+# model often mirrors that style. We accept both to keep ``grounded=True``
+# honest and the UI's timestamp chips consistent.
+#
+# We still require brackets/parens on purpose — bare "meet at 3:00" in
+# conversational prose would be a false positive.
+_TIMESTAMP_RE = re.compile(
+    r"[\[\(]"
+    r"(?:"
+    r"(\d+):(\d{2})(?:\.\d+)?"          # group 1,2 — M:SS form
+    r"|"
+    r"(\d+(?:\.\d+)?)s"                  # group 3   — Ns / N.Ns form
+    r")"
+    r"[\]\)]"
+)
 
 
 def _extract_cited_timestamps(answer: str) -> List[float]:
-    """Parse ``[M:SS]``/``(M:SS)`` references from an answer. Returns seconds.
-
-    Deliberately strict about the bracket form so we don't pick up things
-    like "meet at 3:00 tomorrow" that aren't video references.
+    """Parse bracketed timestamp citations (``[M:SS]`` or ``[Ns]``) from an
+    answer. Returns seconds as floats. Deliberately strict about the bracket
+    form so conversational text like "meet at 3:00" doesn't match.
     """
     if not answer:
         return []
     seconds: List[float] = []
     for match in _TIMESTAMP_RE.finditer(answer):
-        minutes = int(match.group(1))
-        secs = int(match.group(2))
-        if secs >= 60:
-            continue  # malformed like "[1:99]" — skip, don't coerce
-        seconds.append(float(minutes * 60 + secs))
+        m_str, s_str, raw_seconds = match.group(1), match.group(2), match.group(3)
+        if m_str and s_str:
+            secs_part = int(s_str)
+            if secs_part >= 60:
+                continue  # malformed like "[1:99]" — skip, don't coerce
+            seconds.append(float(int(m_str) * 60 + secs_part))
+        elif raw_seconds is not None:
+            seconds.append(float(raw_seconds))
     return seconds
 
 

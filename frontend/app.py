@@ -370,8 +370,22 @@ def reprocess_video(video_id: str, domain_context: Optional[str]) -> bool:
 # Helpers
 # ---------------------------------------------------------------------------
 
-# Matches [M:SS] / (M:SS) / [M:SS.f] — same regex as the backend's grounding.
-_TIMESTAMP_RE = re.compile(r"[\[\(](\d+):(\d{2})(?:\.\d+)?[\]\)]")
+# Matches both bracketed timestamp shapes the LLM actually produces:
+#   * ``[M:SS]`` / ``(M:SS)`` with optional ``.f`` fractional part
+#   * ``[Ns]`` / ``[N.Ns]`` — seconds directly, because our prompt shows
+#     retrieved chunks as ``At 127.9s:`` and the model often mirrors that.
+# Kept in sync with ``backend/src/quadrag/generation/rag_generator.py`` so
+# display highlighting and backend grounding agree on what counts as a
+# citation.
+_TIMESTAMP_RE = re.compile(
+    r"[\[\(]"
+    r"(?:"
+    r"(\d+):(\d{2})(?:\.\d+)?"          # group 1,2 — M:SS form
+    r"|"
+    r"(\d+(?:\.\d+)?)s"                  # group 3   — Ns / N.Ns form
+    r")"
+    r"[\]\)]"
+)
 
 
 def fmt_timestamp(seconds: float) -> str:
@@ -381,24 +395,30 @@ def fmt_timestamp(seconds: float) -> str:
 
 
 def prepare_answer_for_markdown(raw: str) -> str:
-    """Replace ``[M:SS]`` / ``(M:SS)`` with styled chips before we hand the text
-    to ``st.markdown``.
+    """Replace timestamp citations with styled chips before handing text to
+    ``st.markdown``. Covers both ``[M:SS]`` and ``[Ns]`` forms, always rendering
+    as ``M:SS`` for visual consistency in the chat bubble.
 
     Why: Streamlit's markdown parser interprets back-to-back bracket pairs
-    (``[0:13][0:10]``) as reference-style link syntax and eats them. That's
-    the "Ungrounded" false-positive the user saw — the raw answer *did*
-    contain ``[M:SS]`` tokens (grounding detection ran on the raw text and
-    returned True server-side), but the rendered answer dropped them.
-
-    Wrapping each timestamp in a span with ``unsafe_allow_html`` sidesteps the
-    bracket-parsing ambiguity and also makes the timestamps visually stand out.
+    (``[0:13][0:10]``) as reference-style link syntax and eats them — that
+    used to produce the "Ungrounded" false positive where the raw answer
+    contained valid citations but the rendered text looked truncated at ``[``.
+    Substituting HTML spans sidesteps the bracket-parsing ambiguity and
+    makes the timestamps visually stand out.
     """
     if not raw:
         return ""
 
     def _chip(match: re.Match) -> str:
-        m, s = match.group(1), match.group(2)
-        return f"<span class='ts-chip'>{m}:{s}</span>"
+        m_str, s_str, raw_seconds = match.group(1), match.group(2), match.group(3)
+        if m_str and s_str:
+            return f"<span class='ts-chip'>{m_str}:{s_str}</span>"
+        if raw_seconds is not None:
+            total = float(raw_seconds)
+            m = int(total // 60)
+            s = int(total % 60)
+            return f"<span class='ts-chip'>{m}:{s:02d}</span>"
+        return match.group(0)
 
     return _TIMESTAMP_RE.sub(_chip, raw)
 

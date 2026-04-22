@@ -64,6 +64,32 @@ class TestExtractCitedTimestamps:
         # A 90-minute video mention must still parse.
         assert _extract_cited_timestamps("See [90:15]") == [5415.0]
 
+    # -----------------------------------------------------------------
+    # [Ns] / [N.Ns] form — the LLM often mirrors the "At Ns:" shape used
+    # in the retrieved-context block instead of our requested [M:SS].
+    # -----------------------------------------------------------------
+
+    def test_bracketed_integer_seconds_is_extracted(self):
+        assert _extract_cited_timestamps("At [127s], the user opens…") == [127.0]
+
+    def test_bracketed_fractional_seconds_is_extracted(self):
+        assert _extract_cited_timestamps("At [127.9s], focus shifts.") == [127.9]
+
+    def test_parenthesised_seconds_form_is_extracted(self):
+        assert _extract_cited_timestamps("Later (200.1s) a menu opens.") == [200.1]
+
+    def test_mixed_forms_extract_in_order(self):
+        # A real LLM answer that mixes both conventions — both must be picked up.
+        got = _extract_cited_timestamps(
+            "First at [0:12], then at [134.5s], later at (2:30), finally at [171.0s]."
+        )
+        assert got == [12.0, 134.5, 150.0, 171.0]
+
+    def test_bracketed_seconds_without_unit_suffix_is_ignored(self):
+        # ``[12]`` with no trailing 's' and no colon isn't a timestamp —
+        # could be a citation number. Stay strict.
+        assert _extract_cited_timestamps("See reference [12] in the list.") == []
+
 
 class TestApplyCitationGrounding:
     def test_no_timestamps_means_ungrounded_returns_original(self):
@@ -118,6 +144,17 @@ class TestApplyCitationGrounding:
         retrieved = [_mk(12.0)]
         citations, _ = apply_citation_grounding("At [0:12] and again at [0:13]", retrieved, tolerance_sec=3.0)
         assert len(citations) == 1  # the one retrieved chunk appears once
+
+    def test_bracketed_seconds_form_grounds_correctly(self):
+        # End-to-end regression: when the LLM writes [127.9s] instead of
+        # [2:07], the UI should still mark the answer grounded and the
+        # returned citations should be the chunks within tolerance of 127.9s.
+        retrieved = [_mk(127.0), _mk(128.5), _mk(200.0)]
+        citations, grounded = apply_citation_grounding(
+            "At [127.9s] the interface opens.", retrieved, tolerance_sec=3.0
+        )
+        assert grounded is True
+        assert sorted(c.timestamp for c in citations) == [127.0, 128.5]
 
     def test_tolerance_defaults_to_settings_value(self):
         # Not passing tolerance_sec → falls back to settings.CITATION_TIMESTAMP_TOLERANCE_SEC (=3.0).
