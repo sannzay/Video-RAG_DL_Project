@@ -1,169 +1,53 @@
-"""Pixeltable UDF functions for video processing."""
+"""Pixeltable UDF functions for video processing.
 
-import asyncio
-import base64
-from io import BytesIO
+After Step 9 the frame-description and domain-caption UDFs were retired in
+favor of Pixeltable's native ``pxt_openai.vision``, which runs API calls
+asynchronously with adaptive rate-limit throttling. The two UDFs that remain
+here are pure-Python helpers that don't touch external services:
+
+* ``resize_image`` — used while building the frames view.
+* ``extract_text_from_chunk`` — pulls the ``text`` field out of Whisper's
+  JSON response. The underlying ``_extract_text_from_chunk`` is plain Python
+  so unit tests can exercise it without going through Pixeltable's column
+  expression machinery.
+"""
+
 import pixeltable as pxt
 from PIL import Image
-import openai
-from concurrent.futures import ThreadPoolExecutor
-
-# Global variable for domain context (set before UDF execution)
-_current_domain_context = "general video analysis"
 
 
 @pxt.udf
 def resize_image(image: pxt.type_system.Image, width: int, height: int) -> pxt.type_system.Image:
-    """
-    Resize an image to fit within the specified width and height while maintaining aspect ratio.
-    Note: The PIL.Image.thumbnail() method modifies the image in place.
-    """
+    """Resize an image to fit within ``width``×``height`` while preserving aspect ratio."""
     if not isinstance(image, Image.Image):
         raise TypeError("Input must be a PIL Image")
 
-    # Create a copy to avoid modifying the original
+    # Create a copy to avoid modifying the original.
+    # PIL.Image.thumbnail() modifies in place, hence the copy.
     img_copy = image.copy()
     img_copy.thumbnail((width, height), Image.Resampling.LANCZOS)
     return img_copy
 
 
-@pxt.udf
-def extract_text_from_chunk(transcript: pxt.type_system.Json) -> str:
-    """
-    Extract text from a transcript JSON object.
-    Note: Predictions of common S2T models are in dict format containing the text and chunk timestamps metadata. We need the text only.
+def _extract_text_from_chunk(transcript) -> str:
+    """Pure-Python impl of Whisper JSON → text extraction.
+
+    Separated from the Pixeltable UDF so unit tests can exercise it directly
+    without routing through Pixeltable's column-expression machinery.
     """
     if isinstance(transcript, dict):
         return str(transcript.get("text", ""))
+    if transcript is None:
+        return ""
     return str(transcript)
 
 
 @pxt.udf
-def describe_image(image: pxt.type_system.Image) -> str:
+def extract_text_from_chunk(transcript: pxt.type_system.Json) -> str:
+    """Extract the ``text`` field from a Whisper transcript JSON object.
+
+    Whisper predictions come back as a dict containing the full transcript
+    plus chunk-level timestamp metadata; we only want the transcript text
+    for embedding and display.
     """
-    Generate a detailed description of an image using OpenAI's Vision API.
-
-    This is a synchronous UDF that bypasses Pixeltable's async context to avoid
-    event loop conflicts with FastAPI/uvloop.
-
-    Args:
-        image: PIL Image to describe
-
-    Returns:
-        str: Detailed description of the image content
-    """
-    try:
-        # Validate input
-        if image is None:
-            return "Invalid image: None provided"
-
-        # Convert PIL Image to base64
-        buffer = BytesIO()
-        image.save(buffer, format="PNG")
-        img_base64 = base64.b64encode(buffer.getvalue()).decode()
-
-        # Validate base64 encoding
-        if not img_base64:
-            return "Failed to encode image"
-
-        # Create OpenAI client (will use environment variable OPENAI_API_KEY)
-        client = openai.OpenAI()
-
-        # Make synchronous API call
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Describe what is happening in this image in detail. Be specific about objects, people, actions, and setting."},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
-                ]
-            }],
-            max_tokens=200,
-            temperature=0.3
-        )
-
-        # Validate response
-        if not response or not response.choices or len(response.choices) == 0:
-            return "No response from vision API"
-
-        description = response.choices[0].message.content
-        if description and isinstance(description, str):
-            description = description.strip()
-            # Ensure we return a non-empty string
-            return description if len(description) > 0 else "Empty description from API"
-        else:
-            return "Invalid response format from vision API"
-
-    except Exception as e:
-        # Return a safe fallback instead of raising an exception
-        # This prevents the entire indexing process from failing
-        error_msg = str(e)[:100]  # Truncate long error messages
-        return f"Description unavailable: {error_msg}"
-
-
-@pxt.udf
-def describe_image_with_domain(image: pxt.type_system.Image) -> str:
-    """
-    Generate a domain-specific description of an image using OpenAI's Vision API.
-
-    Uses the globally set domain context for contextual captions.
-    """
-    global _current_domain_context
-
-    try:
-        # Validate input
-        if image is None:
-            return "Invalid image: None provided"
-
-        domain_context = _current_domain_context
-        if not domain_context or not isinstance(domain_context, str):
-            return "Invalid domain context provided"
-
-        # Convert PIL Image to base64
-        buffer = BytesIO()
-        image.save(buffer, format="PNG")
-        img_base64 = base64.b64encode(buffer.getvalue()).decode()
-
-        if not img_base64:
-            return "Failed to encode image"
-
-        # Create OpenAI client
-        client = openai.OpenAI()
-
-        # Create domain-specific prompt
-        prompt = f"""Analyze this image in the context of: {domain_context}
-
-Describe what you see with specific focus on elements relevant to {domain_context}.
-Be detailed about objects, actions, and visual elements that would be important in this domain context."""
-
-        # Make synchronous API call
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
-                ]
-            }],
-            max_tokens=200,
-            temperature=0.3
-        )
-
-        # Process response
-        if response and response.choices and len(response.choices) > 0:
-            description = response.choices[0].message.content
-            if description and isinstance(description, str):
-                description = description.strip()
-                return description if description else f"Empty description from API for {domain_context}"
-            else:
-                return f"Invalid response format from vision API for {domain_context}"
-        else:
-            return f"No response from vision API for {domain_context}"
-
-    except Exception as e:
-        # Return a safe fallback instead of raising an exception
-        error_msg = str(e)[:100]
-        return f"Domain description unavailable ({domain_context}): {error_msg}"
-
+    return _extract_text_from_chunk(transcript)

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend (FastAPI / uvicorn)",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["start_backend.sh"],
+      "port": 8000
+    },
+    {
+      "name": "frontend (Streamlit)",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["start_frontend.sh"],
+      "port": 8501
+    }
+  ]
+}

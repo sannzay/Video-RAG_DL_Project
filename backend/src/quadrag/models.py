@@ -79,11 +79,19 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    """Chat response with answer and citations."""
+    """Chat response with answer and citations.
+
+    ``grounded`` is True when the LLM answer cited at least one ``[M:SS]``
+    timestamp that matched one of the retrieved chunks (within the
+    ``CITATION_TIMESTAMP_TOLERANCE_SEC`` window). False otherwise — the answer
+    might still be useful but the UI should hint to the user that it isn't
+    anchored to specific moments in the video.
+    """
 
     answer: str
     citations: list[RetrievalResult]
     processing_time: float
+    grounded: bool = False
 
 
 class VideoMetadata(BaseModel):

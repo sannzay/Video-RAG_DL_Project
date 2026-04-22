@@ -126,3 +126,34 @@ class VideoProcessor:
         return video_exists_in_registry(video_id)
 
 
+def cleanup_partial_pixeltable_artifacts(video_id: str) -> None:
+    """Drop the Pixeltable directory (and all tables/views inside it) for a video.
+
+    Called from ``ProcessingStateStore.mark_failed`` so that when indexing
+    crashes mid-flight, we don't leak tables and views for the next run.
+    Idempotent: silent no-op if the video isn't in the registry or its
+    Pixeltable dir no longer exists.
+    """
+    try:
+        info = get_video_from_registry(video_id)
+    except Exception:
+        logger.exception(f"Could not fetch registry entry for {video_id} during cleanup")
+        return
+
+    if info is None:
+        logger.debug(f"No registry entry for {video_id}; nothing to clean up")
+        return
+
+    pxt_dir = info.cache_dir
+    if not pxt_dir:
+        logger.debug(f"Registry entry for {video_id} has no cache_dir; skipping cleanup")
+        return
+
+    try:
+        pxt.drop_dir(pxt_dir, force=True)
+        logger.info(f"Dropped Pixeltable directory {pxt_dir} (cleanup after failure of {video_id})")
+    except Exception:
+        # Already gone, never created, or Pixeltable not initialized — all non-fatal.
+        logger.exception(f"drop_dir({pxt_dir}) failed during cleanup of {video_id}")
+
+

@@ -1,7 +1,8 @@
 """RAG generator using Groq LLM."""
 
+import re
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from groq import Groq
 from loguru import logger
@@ -11,6 +12,67 @@ from quadrag.models import ChatResponse, IndexType, RetrievalResult
 
 settings = get_settings()
 logger = logger.bind(name="RAGGenerator")
+
+# Matches ``[M:SS]`` / ``(M:SS)`` with optional fractional seconds.
+# Minutes can be any number of digits so 10+ minute videos still parse.
+# We deliberately don't try to match bare ``M:SS`` without brackets — too
+# many false positives in conversational English.
+_TIMESTAMP_RE = re.compile(r"[\[\(](\d+):(\d{2})(?:\.\d+)?[\]\)]")
+
+
+def _extract_cited_timestamps(answer: str) -> List[float]:
+    """Parse ``[M:SS]``/``(M:SS)`` references from an answer. Returns seconds.
+
+    Deliberately strict about the bracket form so we don't pick up things
+    like "meet at 3:00 tomorrow" that aren't video references.
+    """
+    if not answer:
+        return []
+    seconds: List[float] = []
+    for match in _TIMESTAMP_RE.finditer(answer):
+        minutes = int(match.group(1))
+        secs = int(match.group(2))
+        if secs >= 60:
+            continue  # malformed like "[1:99]" — skip, don't coerce
+        seconds.append(float(minutes * 60 + secs))
+    return seconds
+
+
+def apply_citation_grounding(
+    answer: str,
+    retrieved: List[RetrievalResult],
+    tolerance_sec: Optional[float] = None,
+) -> Tuple[List[RetrievalResult], bool]:
+    """Filter ``retrieved`` to only citations the answer actually referenced.
+
+    Returns ``(citations, grounded)``:
+
+    * Answer has no ``[M:SS]`` references → ``grounded=False``, return the
+      unmodified retrieved list so the UI still has *something* to show.
+    * Answer cites timestamps and at least one retrieved chunk lands within
+      ``tolerance_sec`` of a cited value → ``grounded=True``, return only
+      the matched chunks.
+    * Answer cites timestamps but none match any retrieved chunk
+      (hallucinated timestamps) → ``grounded=False``, return the original
+      retrieved list rather than an empty citations array. Returning empty
+      would falsely suggest the LLM anchored its answer; returning
+      ``grounded=False`` with the raw retrieved set is the honest surface.
+    """
+    if tolerance_sec is None:
+        tolerance_sec = settings.CITATION_TIMESTAMP_TOLERANCE_SEC
+
+    cited = _extract_cited_timestamps(answer)
+    if not cited:
+        return list(retrieved), False
+
+    matched: List[RetrievalResult] = []
+    for result in retrieved:
+        if any(abs(result.timestamp - ts) <= tolerance_sec for ts in cited):
+            matched.append(result)
+
+    if not matched:
+        return list(retrieved), False
+    return matched, True
 
 
 class RAGGenerator:
@@ -97,9 +159,12 @@ detailed answers with timestamp references when relevant."""
         context_parts.append(f"\n\n=== USER QUESTION ===\n{query}")
         context_parts.append(
             "\n\n=== INSTRUCTIONS ===\n"
-            "Please answer the user's question based on the provided video content. "
-            "Reference specific timestamps when mentioning information. "
-            "If the information is not in the provided context, say so clearly."
+            "Answer the user's question based on the provided video content.\n"
+            "When you reference something that happened in the video, cite the "
+            "timestamp in the form [M:SS] — for example [0:12] for 12 seconds "
+            "in, or [2:30] for two minutes thirty seconds. Use the timestamps "
+            "given above in the context blocks; don't invent new ones. If the "
+            "information isn't in the provided context, say so clearly."
         )
 
         return "".join(context_parts)
@@ -134,29 +199,35 @@ detailed answers with timestamp references when relevant."""
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                max_tokens=1024,
+                temperature=settings.GROQ_TEMPERATURE,
+                max_tokens=settings.GROQ_MAX_TOKENS,
             )
 
             answer = response.choices[0].message.content
             processing_time = time.time() - start_time
 
-            logger.info(f"Generated answer in {processing_time:.2f}s")
+            citations, grounded = apply_citation_grounding(answer, retrieved_results)
+            logger.info(
+                f"Generated answer in {processing_time:.2f}s "
+                f"(grounded={grounded}, {len(citations)}/{len(retrieved_results)} citations)"
+            )
 
             return ChatResponse(
                 answer=answer,
-                citations=retrieved_results,
+                citations=citations,
                 processing_time=processing_time,
+                grounded=grounded,
             )
 
         except Exception as e:
             logger.error(f"Error generating answer: {e}")
             processing_time = time.time() - start_time
-            
+
             return ChatResponse(
                 answer=f"I apologize, but I encountered an error while generating the answer: {str(e)}",
                 citations=retrieved_results,
                 processing_time=processing_time,
+                grounded=False,
             )
 
     def generate_streaming_answer(
@@ -187,8 +258,8 @@ detailed answers with timestamp references when relevant."""
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                max_tokens=1024,
+                temperature=settings.GROQ_TEMPERATURE,
+                max_tokens=settings.GROQ_MAX_TOKENS,
                 stream=True,
             )
 

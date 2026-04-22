@@ -235,26 +235,28 @@ def get_video_duration(video_path: str) -> float:
 def calculate_frame_count(video_duration_seconds: float) -> int:
     """Calculate optimal frame count based on video duration.
 
-    Args:
-        video_duration_seconds: Video duration in seconds
-
-    Returns:
-        Recommended number of frames to extract
+    Reduced from the original schedule to stay well under OpenAI's
+    Tier-1 gpt-4o-mini TPM limit (200 k/min). Each frame runs through
+    ``pxt_openai.vision`` twice (description + domain) at roughly
+    1.5 k tokens/call, so 20 frames × 2 indexes = 60 k TPM — leaves plenty
+    of headroom for concurrent embedding calls and Whisper. Bumping frames
+    back up requires a higher OpenAI tier.
     """
     if video_duration_seconds <= 0:
-        return 45  # Default fallback
+        return 20  # Default fallback
 
-    if video_duration_seconds < 300:  # < 5 minutes
+    if video_duration_seconds < 300:      # < 5 min
+        return 20
+    elif video_duration_seconds < 1800:   # < 30 min
+        return 30
+    elif video_duration_seconds < 3600:   # < 1 h
         return 45
-    elif video_duration_seconds < 1800:  # < 30 minutes
-        return 90
-    elif video_duration_seconds < 3600:  # < 1 hour
-        return 120
-    elif video_duration_seconds < 7200:  # < 2 hours
-        return 180
-    else:  # Very long videos
-        # 1 frame per 2 minutes, max 300 frames
-        return min(300, max(180, int(video_duration_seconds // 120)))
+    elif video_duration_seconds < 7200:   # < 2 h
+        return 60
+    else:                                  # very long videos
+        # Roughly 1 frame per 2 min, capped at 90 so a full movie stays
+        # under Tier-1 TPM for the domain-index build.
+        return min(90, max(60, int(video_duration_seconds // 120)))
 
 
 def validate_video_size(file_path: str) -> bool:

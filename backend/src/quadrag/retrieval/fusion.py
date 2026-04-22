@@ -1,6 +1,6 @@
 """Result fusion logic for combining multi-index retrieval results."""
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from loguru import logger
 
@@ -94,17 +94,22 @@ class ResultFusion:
         return weighted_results
 
     def deduplicate_by_timestamp(
-        self, results: List[RetrievalResult], time_window: float = 2.0
+        self,
+        results: List[RetrievalResult],
+        time_window: Optional[float] = None,
     ) -> List[RetrievalResult]:
         """Deduplicate results with similar timestamps, keeping highest score.
 
         Args:
             results: List of retrieval results
-            time_window: Time window in seconds for deduplication
+            time_window: Time window in seconds for deduplication; defaults to
+                ``settings.FUSION_DEDUP_WINDOW_SEC`` when ``None``.
 
         Returns:
             Deduplicated list of results
         """
+        if time_window is None:
+            time_window = settings.FUSION_DEDUP_WINDOW_SEC
         if not results:
             return []
 

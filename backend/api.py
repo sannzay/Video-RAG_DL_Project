@@ -5,10 +5,11 @@ import os
 import sys
 import threading
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
+
+from loguru import logger
 
 # ============================================================================
 # CRITICAL: Fix Python path and import numpy BEFORE any heavy imports
@@ -55,7 +56,7 @@ except ImportError as e:
 # Pixeltable uses nest_asyncio which can't patch uvloop event loops
 import asyncio
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())  # Use standard asyncio, not uvloop
-print("INFO: Set asyncio event loop policy to DefaultEventLoopPolicy")
+logger.info("Set asyncio event loop policy to DefaultEventLoopPolicy")
 
 # Step 5: Defer Pixeltable initialization until needed to avoid asyncio conflicts
 _pixeltable_initialized = False
@@ -66,9 +67,9 @@ def _ensure_pixeltable():
             import pixeltable as pxt
             pxt.init()  # Initialize Pixeltable when first needed
             _pixeltable_initialized = True
-            print("INFO: Pixeltable initialized successfully (lazy)")
+            logger.info("Pixeltable initialized successfully (lazy)")
         except Exception as e:
-            print(f"WARNING: Could not initialize Pixeltable: {e}")
+            logger.warning(f"Could not initialize Pixeltable: {e}")
             raise
 
 # Step 6: Set up API keys for Pixeltable
@@ -77,9 +78,9 @@ try:
     _early_settings = get_settings()
     os.environ["OPENAI_API_KEY"] = _early_settings.OPENAI_API_KEY or ""
     os.environ["GOOGLE_API_KEY"] = _early_settings.GOOGLE_API_KEY or ""
-    print("INFO: API keys configured for Pixeltable")
+    logger.info("API keys configured for Pixeltable")
 except Exception as e:
-    print(f"WARNING: Could not configure API keys: {e}")
+    logger.warning(f"Could not configure API keys: {e}")
 
 # Step 4: Restore working directory (but keep sys.path clean)
 os.chdir(_original_cwd)
@@ -91,11 +92,12 @@ if _backend_src not in sys.path and os.path.isdir(_backend_src):
     sys.path.insert(0, _backend_src)
 # ============================================================================
 
+from contextlib import asynccontextmanager
+
 import aiofiles
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from loguru import logger
 
 # Log numpy import status
 if 'IMPORT_FAILED' in str(_numpy_path):
@@ -119,11 +121,60 @@ from quadrag.models import (
     VideoUploadResponse,
 )
 
-# Initialize FastAPI app FIRST (before any heavy imports)
+# Thread-safe processing state (replaces the four ad-hoc module dicts).
+# See backend/src/quadrag/state/processing_state.py for the full API.
+from quadrag.state import ProcessingStateStore
+
+
+def _resolve_snapshot_path() -> Path:
+    """Work out where the ProcessingStateStore snapshot lives on this host."""
+    from quadrag.config import get_settings
+    return get_settings().get_cache_dir() / "processing_state.json"
+
+
+def _on_fail_cleanup(video_id: str) -> None:
+    """Cleanup callback invoked by ProcessingStateStore.mark_failed.
+
+    Imports Pixeltable lazily so test-time imports of this module don't force
+    a full Pixeltable init.
+    """
+    try:
+        from quadrag.video.processor import cleanup_partial_pixeltable_artifacts
+    except Exception:
+        logger.exception("Could not import cleanup helper; skipping orphan cleanup")
+        return
+    cleanup_partial_pixeltable_artifacts(video_id)
+
+
+# Instantiate the store with its snapshot path + cleanup hook. Contents are
+# loaded from disk later via the FastAPI lifespan handler.
+store = ProcessingStateStore(
+    snapshot_path=_resolve_snapshot_path(),
+    on_fail_cleanup=_on_fail_cleanup,
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan: load persisted processing state on startup."""
+    snapshot_path = _resolve_snapshot_path()
+    restored = ProcessingStateStore.load_from_disk(
+        snapshot_path,
+        on_fail_cleanup=_on_fail_cleanup,
+    )
+    # Replace the module-level `store`'s contents in-place so any module that
+    # already imported `api.store` keeps working.
+    store.restore(restored.snapshot())
+    logger.info(f"ProcessingStateStore restored from {snapshot_path}")
+    yield
+
+
+# Initialize FastAPI app with lifespan hook
 app = FastAPI(
     title="QuadRAG API",
     description="A Four-Index Multimodal RAG System for Video Understanding",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -135,34 +186,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Thread pool executor for Pixeltable operations
-executor = ThreadPoolExecutor(max_workers=2)
-
-# Track processing status
-processing_status: Dict[str, ProcessingStatus] = {}
-processing_errors: Dict[str, str] = {}
-video_indexes: Dict[str, list[IndexType]] = {}
-_index_errors: Dict[str, Dict[IndexType, str]] = {}  # Track specific index creation errors
-
 # Processing lock to prevent concurrent Pixeltable operations
 processing_lock = asyncio.Lock()
-
-
-def get_index_errors(video_id: str) -> Dict[IndexType, str]:
-    """Get index errors for a video in a thread-safe way."""
-    return _index_errors.get(video_id, {})
-
-
-def set_index_error(video_id: str, index_type: IndexType, error_msg: str) -> None:
-    """Set an index error for a video in a thread-safe way."""
-    if video_id not in _index_errors:
-        _index_errors[video_id] = {}
-    _index_errors[video_id][index_type] = error_msg
-
-
-def clear_index_errors(video_id: str) -> None:
-    """Clear index errors for a video."""
-    _index_errors.pop(video_id, None)
 
 # Lazy-loaded components (initialized on first use)
 _settings = None
@@ -304,8 +329,7 @@ async def process_video_background(video_id: str, video_path: str):
 
         except Exception as e:
             logger.error(f"Video transcoding failed for {video_id}: {e}")
-            processing_status[video_id] = ProcessingStatus.FAILED
-            processing_errors[video_id] = f"Transcoding failed: {str(e)}"
+            store.mark_failed(video_id, f"Transcoding failed: {str(e)}")
             return
 
         # Now start the actual video processing - run synchronously in separate thread
@@ -321,8 +345,7 @@ async def process_video_background(video_id: str, video_path: str):
                 logger.error(f"Background processing failed for {video_id}: {e}")
                 import traceback
                 logger.error(f"Background processing traceback: {traceback.format_exc()}")
-                processing_status[video_id] = ProcessingStatus.FAILED
-                processing_errors[video_id] = str(e)
+                store.mark_failed(video_id, str(e))
 
         # Start as daemon thread - will not prevent server shutdown
         processing_thread = threading.Thread(target=sync_processing, daemon=True)
@@ -332,8 +355,7 @@ async def process_video_background(video_id: str, video_path: str):
         logger.error(f"Background processing failed for {video_id}: {e}")
         import traceback
         logger.error(f"Background processing traceback: {traceback.format_exc()}")
-        processing_status[video_id] = ProcessingStatus.FAILED
-        processing_errors[video_id] = str(e)
+        store.mark_failed(video_id, str(e))
 
 
 def _process_video_sync(video_id: str, domain_context: Optional[str] = None, session_id: Optional[str] = None):
@@ -351,8 +373,7 @@ def _process_video_sync(video_id: str, domain_context: Optional[str] = None, ses
         logger.error(f"Sync video processing failed for {video_id}: {e}")
         import traceback
         logger.error(f"Sync processing traceback: {traceback.format_exc()}")
-        processing_status[video_id] = ProcessingStatus.FAILED
-        processing_errors[video_id] = str(e)
+        store.mark_failed(video_id, str(e))
 
 
 @app.post("/upload-video", response_model=VideoUploadResponse)
@@ -408,7 +429,7 @@ async def upload_video(
 
         # Start background processing (transcoding + indexing) asynchronously
         # This prevents the upload request from timing out on large videos
-        processing_status[video_id] = ProcessingStatus.PROCESSING
+        store.mark_processing(video_id)
         logger.info(f"Starting background processing for video {video_id}")
 
         # Use asyncio.create_task in a fire-and-forget manner, but ensure proper exception handling
@@ -444,7 +465,7 @@ async def process_video(request: VideoProcessRequest):
     try:
         video_id = request.video_id
 
-        if video_id not in processing_status:
+        if not store.has(video_id):
             raise HTTPException(status_code=404, detail="Video not found")
 
         # Check if already processed
@@ -456,7 +477,7 @@ async def process_video(request: VideoProcessRequest):
             )
 
         # Start processing in background
-        processing_status[video_id] = ProcessingStatus.PROCESSING
+        store.mark_processing(video_id)
         asyncio.create_task(_process_video_background(video_id, request.domain_context, request.session_id))
 
         return VideoProcessResponse(
@@ -487,7 +508,7 @@ async def reprocess_video(request: VideoProcessRequest):
     try:
         video_id = request.video_id
 
-        if video_id not in processing_status:
+        if not store.has(video_id):
             raise HTTPException(status_code=404, detail="Video not found")
 
         # Check if video exists in registry
@@ -495,13 +516,10 @@ async def reprocess_video(request: VideoProcessRequest):
         if not video_info:
             raise HTTPException(status_code=404, detail="Video not found in registry")
 
-        # Reset processing status to allow re-processing
-        processing_status[video_id] = ProcessingStatus.PROCESSING
-        # Clear previous errors
-        if video_id in processing_errors:
-            del processing_errors[video_id]
-        clear_index_errors(video_id)
-        # Keep existing video_indexes to preserve successful indexes
+        # Reset processing status to allow re-processing; clear previous errors but
+        # keep existing indexes so successful ones survive a retry.
+        store.clear_errors(video_id)
+        store.mark_processing(video_id)
 
         logger.info(f"Re-processing video {video_id}")
 
@@ -580,7 +598,7 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
             get_video_processor().process_video(video_id, video_path)
 
         # Initialize index errors tracking for this video
-        clear_index_errors(video_id)
+        store.clear_errors(video_id)
 
         # Create Audio Index
         logger.info(f"Creating Audio Index for {video_id}")
@@ -590,11 +608,11 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
                 logger.info(f"Audio Index created successfully for {video_id}")
             else:
                 error_msg = "Audio index creation failed - audio format may be incompatible with transcription service"
-                set_index_error(video_id, IndexType.AUDIO, error_msg)
+                store.record_index_error(video_id, IndexType.AUDIO, error_msg)
                 logger.warning(f"Audio Index creation failed for {video_id}: {error_msg}")
         except Exception as e:
             error_msg = f"Audio index creation error: {str(e)[:200]}"
-            set_index_error(video_id, IndexType.AUDIO, error_msg)
+            store.record_index_error(video_id, IndexType.AUDIO, error_msg)
             logger.error(f"Audio Index creation failed for {video_id}: {error_msg}")
 
         # Create Image Index
@@ -605,11 +623,11 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
                 logger.info(f"Image Index created successfully for {video_id}")
             else:
                 error_msg = "Image index creation failed - video frame extraction issue"
-                set_index_error(video_id, IndexType.IMAGE, error_msg)
+                store.record_index_error(video_id, IndexType.IMAGE, error_msg)
                 logger.warning(f"Image Index creation failed for {video_id}: {error_msg}")
         except Exception as e:
             error_msg = f"Image index creation error: {str(e)[:200]}"
-            set_index_error(video_id, IndexType.IMAGE, error_msg)
+            store.record_index_error(video_id, IndexType.IMAGE, error_msg)
             logger.error(f"Image Index creation failed for {video_id}: {error_msg}")
 
         # Create Description Index (only if Image Index succeeded)
@@ -621,36 +639,39 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
                     logger.info(f"Description Index created successfully for {video_id}")
                 else:
                     error_msg = "Description index creation failed - vision API issue"
-                    set_index_error(video_id, IndexType.DESCRIPTION, error_msg)
+                    store.record_index_error(video_id, IndexType.DESCRIPTION, error_msg)
                     logger.warning(f"Description Index creation failed for {video_id}: {error_msg}")
             except Exception as e:
                 error_msg = f"Description index creation error: {str(e)[:200]}"
-                set_index_error(video_id, IndexType.DESCRIPTION, error_msg)
+                store.record_index_error(video_id, IndexType.DESCRIPTION, error_msg)
                 logger.error(f"Description Index creation failed for {video_id}: {error_msg}")
         else:
             logger.info(f"Skipping Description Index (requires Image Index)")
 
-        # Create Domain Index (always create with default context if Image Index succeeded)
-        if IndexType.IMAGE in indexes_created_list:
-            # Use provided context or default to general video analysis
-            effective_domain_context = domain_context or "general video content analysis"
-            effective_session_id = session_id or f"default_{video_id[:8]}"
-
-            logger.info(f"Creating Domain Index for {video_id} with context: {effective_domain_context}")
+        # Create Domain Index eagerly if a context was supplied at upload time.
+        # Without a context we skip — the lazy path in /chat builds per-query.
+        if IndexType.IMAGE in indexes_created_list and domain_context:
+            logger.info(f"Creating Domain Index for {video_id} with context: {domain_context}")
             try:
-                if get_indexer_lazy().create_domain_index(video_id, effective_session_id, effective_domain_context):
+                if get_indexer_lazy().create_domain_index(video_id, domain_context):
                     indexes_created_list.append(IndexType.DOMAIN)
                     logger.info(f"Domain Index created successfully for {video_id}")
                 else:
                     error_msg = "Domain index creation failed - vision API or context issue"
-                    set_index_error(video_id, IndexType.DOMAIN, error_msg)
+                    store.record_index_error(video_id, IndexType.DOMAIN, error_msg)
                     logger.warning(f"Domain Index creation failed for {video_id}: {error_msg}")
             except Exception as e:
                 error_msg = f"Domain index creation error: {str(e)[:200]}"
-                set_index_error(video_id, IndexType.DOMAIN, error_msg)
+                store.record_index_error(video_id, IndexType.DOMAIN, error_msg)
                 logger.error(f"Domain Index creation failed for {video_id}: {error_msg}")
         else:
-            logger.info(f"Skipping Domain Index (requires Image Index)")
+            if IndexType.IMAGE not in indexes_created_list:
+                logger.info(f"Skipping Domain Index (requires Image Index)")
+            else:
+                logger.info(
+                    f"No domain_context provided at upload time for {video_id}; "
+                    f"domain view will be built lazily on first /chat request."
+                )
 
     # Run Pixeltable operations in a separate daemon thread to avoid event loop corruption
     processing_thread = threading.Thread(target=_sync_pixeltable_processing, daemon=True)
@@ -661,26 +682,21 @@ async def _process_video_async(video_id: str, domain_context: Optional[str] = No
 
     if processing_thread.is_alive():
         logger.error(f"Processing thread for {video_id} timed out after 30 minutes")
-        processing_status[video_id] = ProcessingStatus.FAILED
-        processing_errors[video_id] = "Processing timed out"
+        store.mark_failed(video_id, "Processing timed out")
         return
 
     if processing_error:
-        processing_status[video_id] = ProcessingStatus.FAILED
-        processing_errors[video_id] = processing_error
+        store.mark_failed(video_id, processing_error)
         logger.error(f"Processing failed for {video_id}: {processing_error}")
         return
 
     # Mark as completed even if some indexes failed (partial success)
     if indexes_created_list:
-        processing_status[video_id] = ProcessingStatus.COMPLETED
-        video_indexes[video_id] = indexes_created_list
+        store.mark_completed(video_id, indexes_created_list)
         logger.info(f"Successfully processed video {video_id} with indexes: {indexes_created_list}")
-        logger.info(f"Status updated to COMPLETED for video {video_id}, current status: {processing_status.get(video_id)}")
+        logger.info(f"Status updated to COMPLETED for video {video_id}, current status: {store.get_status(video_id)}")
     else:
-        processing_status[video_id] = ProcessingStatus.FAILED
-        processing_errors[video_id] = "All index creation failed"
-        video_indexes[video_id] = []
+        store.mark_failed(video_id, "All index creation failed")
         logger.error(f"Failed to create any indexes for video {video_id}")
 
 
@@ -701,8 +717,7 @@ async def _process_video_background(video_id: str, domain_context: Optional[str]
             await _process_video_async(video_id, domain_context, session_id)
         except Exception as e:
             logger.error(f"Error processing video {video_id}: {e}")
-            processing_status[video_id] = ProcessingStatus.FAILED
-            processing_errors[video_id] = str(e)
+            store.mark_failed(video_id, str(e))
             raise
 
 
@@ -717,13 +732,11 @@ async def get_video_status(video_id: str):
         VideoStatusResponse with status and created indexes
     """
     try:
-        status = processing_status.get(video_id, ProcessingStatus.PENDING)
-        error_message = processing_errors.get(video_id)
+        status = store.get_status(video_id)
+        error_message = store.get_error(video_id)
+        indexes_created = store.get_indexes(video_id)
 
-        logger.debug(f"Video {video_id} status: {status}, indexes: {video_indexes.get(video_id, [])}")
-
-        # Get created indexes from our tracking
-        indexes_created = video_indexes.get(video_id, [])
+        logger.debug(f"Video {video_id} status: {status}, indexes: {indexes_created}")
         
         # Also verify from registry if available
         video_info = get_video_from_registry(video_id)
@@ -735,22 +748,24 @@ async def get_video_status(video_id: str):
                         indexes_created.append(IndexType.IMAGE)
                     if IndexType.DESCRIPTION not in indexes_created:
                         indexes_created.append(IndexType.DESCRIPTION)
-            except:
-                pass
+            except Exception:
+                logger.exception(f"Failed to probe frames_view for {video_id}")
 
             try:
                 if video_info.audio_view:
                     if IndexType.AUDIO not in indexes_created:
                         indexes_created.append(IndexType.AUDIO)
-            except:
-                pass
+            except Exception:
+                logger.exception(f"Failed to probe audio_view for {video_id}")
 
             try:
-                if video_info.domain_view:
+                # Any registered domain view counts for the IndexType.DOMAIN flag;
+                # post-Step-8 there can be several per video keyed by context hash.
+                if video_info.domain_views:
                     if IndexType.DOMAIN not in indexes_created:
                         indexes_created.append(IndexType.DOMAIN)
-            except:
-                pass
+            except Exception:
+                logger.exception(f"Failed to probe domain_views for {video_id}")
 
         logger.debug(f"Video {video_id} status: {status}, indexes: {indexes_created}")
         return VideoStatusResponse(
@@ -758,7 +773,7 @@ async def get_video_status(video_id: str):
             status=status,
             indexes_created=indexes_created,
             error_message=error_message,
-            index_errors=get_index_errors(video_id),
+            index_errors=store.get_index_errors(video_id),
         )
 
     except Exception as e:
@@ -788,31 +803,43 @@ async def chat(request: ChatRequest):
 
         # Run search directly in async context since Pixeltable needs proper event loop
         try:
+            # If a domain_context was supplied, make sure the per-context domain view
+            # exists before we search — lazy-building it here (may take 30s–2min on
+            # a first-time context) is the Step-8 design.
+            domain_view_name: Optional[str] = None
+            if request.domain_context:
+                from quadrag.video.domain_manager import ensure_domain_view
+                domain_view_name = ensure_domain_view(request.video_id, request.domain_context)
+
             # Initialize search engine directly
             from quadrag.retrieval.search_engine import VideoSearchEngine
-            search_engine = VideoSearchEngine(request.video_id, request.session_id)
+            search_engine = VideoSearchEngine(
+                request.video_id,
+                request.session_id,
+                domain_view_name=domain_view_name,
+            )
 
             # Search all indexes
             search_results = search_engine.search_all_indexes(
                 query_text=request.query,
-                use_domain=request.domain_context is not None,
+                use_domain=domain_view_name is not None,
             )
 
             # Debug: Log search results
             total_results = sum(len(results) for results in search_results.values())
-            print(f"DEBUG: Search completed - total results: {total_results}")
+            logger.debug(f"Search completed - total results: {total_results}")
             for index_type, results in search_results.items():
-                print(f"DEBUG: {index_type.value}: {len(results)} results")
+                logger.debug(f"{index_type.value}: {len(results)} results")
                 if results:
                     for i, result in enumerate(results[:2]):  # Show first 2 results
-                        print(f"DEBUG:   Result {i}: '{result.content[:100]}...' at {result.timestamp:.1f}s (score: {result.similarity:.3f})")
+                        logger.debug(f"  Result {i}: '{result.content[:100]}...' at {result.timestamp:.1f}s (score: {result.similarity:.3f})")
 
             # Fuse results
             from quadrag.retrieval.fusion import get_fusion
             fusion = get_fusion()
             fused_results = fusion.fuse_results(search_results)
 
-            print(f"DEBUG: Fused results: {len(fused_results)}")
+            logger.debug(f"Fused results: {len(fused_results)}")
 
         except Exception as e:
             logger.error(f"Search failed: {e}")
@@ -850,7 +877,7 @@ async def list_videos():
         
         video_metadata_list = []
         for video_id, video_info in all_videos.items():
-            status = processing_status.get(video_id, ProcessingStatus.COMPLETED)
+            status = store.get_status(video_id, default=ProcessingStatus.COMPLETED)
             
             # Get created indexes
             indexes_created = []
@@ -859,10 +886,10 @@ async def list_videos():
                     indexes_created.extend([IndexType.IMAGE, IndexType.DESCRIPTION])
                 if video_info.audio_view:
                     indexes_created.append(IndexType.AUDIO)
-                if video_info.domain_view:
+                if video_info.domain_views:
                     indexes_created.append(IndexType.DOMAIN)
-            except:
-                pass
+            except Exception:
+                logger.exception(f"Failed to enumerate indexes for {video_id}")
 
             # Get video file info
             video_dir = settings.get_video_dir()
@@ -889,11 +916,8 @@ async def list_videos():
 async def debug_status():
     """Debug endpoint to check all video processing status."""
     return {
-        "processing_status": {k: str(v) for k, v in processing_status.items()},
-        "video_indexes": {k: [str(idx) for idx in v] for k, v in video_indexes.items()},
-        "processing_errors": processing_errors,
-        "index_errors": _index_errors,
-        "registry_videos": list(get_all_videos().keys()) if get_all_videos else []
+        "store": store.snapshot(),
+        "registry_videos": list(get_all_videos().keys()) if get_all_videos else [],
     }
 
 
@@ -913,8 +937,8 @@ async def debug_transcriptions(video_id: str):
             try:
                 # Force computation by collecting all transcriptions
                 chunks = audio_view.select(
-                    audio_view.start_time_sec,
-                    audio_view.end_time_sec,
+                    audio_view.segment_start,
+                    audio_view.segment_end,
                     audio_view.transcript_text,
                 ).collect()
 
@@ -924,8 +948,8 @@ async def debug_transcriptions(video_id: str):
                     raw_transcript = chunk.get("transcription", "")
                     logger.info(f"Debug chunk {i}: text='{text[:100]}...', raw='{str(raw_transcript)[:200]}...'")
                     transcriptions.append({
-                        "start_time": float(chunk.get("start_time_sec", 0)),
-                        "end_time": float(chunk.get("end_time_sec", 0)),
+                        "start_time": float(chunk.get("segment_start", 0)),
+                        "end_time": float(chunk.get("segment_end", 0)),
                         "text": text,
                         "raw_transcription": str(raw_transcript)
                     })

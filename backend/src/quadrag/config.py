@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
     # === Video Processing Configuration ===
-    SPLIT_FRAMES_COUNT: int = 45
+    SPLIT_FRAMES_COUNT: int = 20  # Cost-safe default; calculate_frame_count overrides per-duration
     AUDIO_CHUNK_LENGTH: int = 10  # Seconds per chunk
     AUDIO_OVERLAP_SECONDS: int = 1
     AUDIO_MIN_CHUNK_DURATION_SECONDS: int = 1
@@ -51,6 +51,39 @@ class Settings(BaseSettings):
     WEIGHT_IMAGE: float = 0.2
     WEIGHT_DESCRIPTION: float = 0.25
     WEIGHT_DOMAIN: float = 0.25
+
+    # Time window (seconds) inside which two results are treated as duplicates.
+    FUSION_DEDUP_WINDOW_SEC: float = 2.0
+
+    # === LLM / Vision Generation Parameters ===
+    # Groq chat completion (answer generation)
+    GROQ_TEMPERATURE: float = 0.7
+    GROQ_MAX_TOKENS: int = 1024
+    # OpenAI vision (frame description / domain caption UDFs)
+    VISION_TEMPERATURE: float = 0.3
+    VISION_MAX_TOKENS: int = 200
+
+    # === Domain Index ===
+    # Upper bound on distinct domain contexts kept as Pixeltable views per
+    # video. Exceeding this triggers LRU eviction of the least-recently-used
+    # view — both the registry entry and the Pixeltable view are dropped.
+    MAX_DOMAIN_VIEWS_PER_VIDEO: int = 5
+    # The tuning knobs below are legacy (difflib + manual-loop path, pre-Step-7).
+    # They are unreferenced in production code now; keeping them only so old
+    # .env files don't error out on extra-field rejection.
+    DOMAIN_CAPTION_BATCH_SIZE: int = 5
+    DOMAIN_CAPTION_BATCH_SLEEP_SEC: float = 2.0
+    DOMAIN_SIMILARITY_THRESHOLD: float = 0.01
+    DOMAIN_SEQUENCE_WEIGHT: float = 0.7
+    DOMAIN_WORD_OVERLAP_WEIGHT: float = 0.3
+
+    # === Client Timeouts (seconds) ===
+    UPLOAD_TIMEOUT_SEC: int = 60
+    CHAT_TIMEOUT_SEC: int = 120
+    STATUS_POLL_TIMEOUT_SEC: int = 30
+
+    # === Citation Grounding (used in a later step) ===
+    CITATION_TIMESTAMP_TOLERANCE_SEC: float = 3.0
 
     # === API Configuration ===
     API_HOST: str = "0.0.0.0"

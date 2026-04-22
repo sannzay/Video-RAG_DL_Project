@@ -27,18 +27,15 @@ st.set_page_config(
     }
 )
 
-# API endpoint - Fixed Railway backend URL
-# Can be overridden with QUADRAG_API_URL environment variable for local development
-RAILWAY_BACKEND_URL = "https://video-ragdlproject-production.up.railway.app"
+# API endpoint — defaults to local backend; override via QUADRAG_API_URL for cloud deploys.
+DEFAULT_BACKEND_URL = "http://localhost:8000"
 
 def get_api_base_url() -> str:
-    """Get API base URL from environment variable or use Railway default."""
-    # Check environment variable first (for local development override)
+    """Get API base URL from QUADRAG_API_URL env var, falling back to local backend."""
     env_url = os.getenv("QUADRAG_API_URL")
     if env_url:
         return env_url
-    # Default to Railway backend
-    return RAILWAY_BACKEND_URL
+    return DEFAULT_BACKEND_URL
 
 # Initialize API_BASE_URL
 API_BASE_URL = get_api_base_url()
@@ -488,6 +485,29 @@ def show_connection_status():
                 st.rerun()
 
 
+# Status-poll debouncing (Step 12) — avoid hammering /status on every rerun.
+# Streamlit reruns the whole script on any widget interaction, so without this
+# every sidebar video fires a GET /status per keystroke.
+STATUS_POLL_MIN_INTERVAL_SEC = float(os.getenv("QUADRAG_STATUS_POLL_INTERVAL_SEC", "2.0"))
+CHAT_TIMEOUT_SEC = int(os.getenv("QUADRAG_CHAT_TIMEOUT_SEC", "120"))
+UPLOAD_TIMEOUT_SEC = int(os.getenv("QUADRAG_UPLOAD_TIMEOUT_SEC", "60"))
+STATUS_POLL_TIMEOUT_SEC = int(os.getenv("QUADRAG_STATUS_POLL_TIMEOUT_SEC", "5"))
+
+
+def should_poll_status(video_id: str) -> bool:
+    """Return True if enough time has passed since the last /status fetch.
+
+    First call for a video_id always returns True. Subsequent calls within
+    ``STATUS_POLL_MIN_INTERVAL_SEC`` return False; the caller reuses whatever
+    state was last stashed in ``st.session_state.uploaded_videos[video_id]``.
+    """
+    last = st.session_state.last_status_poll.get(video_id, 0.0)
+    if time.time() - last >= STATUS_POLL_MIN_INTERVAL_SEC:
+        st.session_state.last_status_poll[video_id] = time.time()
+        return True
+    return False
+
+
 def initialize_session_state():
     """Initialize Streamlit session state."""
     if "session_id" not in st.session_state:
@@ -507,6 +527,11 @@ def initialize_session_state():
     
     if "uploaded_videos" not in st.session_state:
         st.session_state.uploaded_videos = {}
+
+    if "last_status_poll" not in st.session_state:
+        # video_id → unix timestamp of the last successful /status fetch.
+        # Gated by STATUS_POLL_MIN_INTERVAL_SEC to stop per-keystroke polling.
+        st.session_state.last_status_poll = {}
 
 
 def show_system_info():
@@ -650,53 +675,61 @@ def show_video_library():
     
     for video_id, video_info in st.session_state.uploaded_videos.items():
         # Initialize variables
-        index_errors = {}
+        index_errors = video_info.get("index_errors", {})
+        indexes = video_info.get("indexes", [])
 
-        # Get status from API
-        try:
-            current_url = get_api_base_url()
-            status_response = requests.get(f"{current_url}/video/{video_id}/status", timeout=5)
-            if status_response.status_code == 200:
-                status_data = status_response.json()
-                api_status = status_data["status"]
-                indexes = status_data.get("indexes_created", [])
-                index_errors = status_data.get("index_errors", {})
+        # Get status from API — but only if enough time has elapsed since
+        # the last poll. Without the gate every widget interaction fires one
+        # GET per video in the sidebar. When the debounce short-circuits we
+        # reuse whatever was stashed in session_state from the prior poll.
+        status = video_info.get("status", "unknown")
+        if should_poll_status(video_id):
+            try:
+                current_url = get_api_base_url()
+                status_response = requests.get(
+                    f"{current_url}/video/{video_id}/status",
+                    timeout=STATUS_POLL_TIMEOUT_SEC,
+                )
+                if status_response.status_code == 200:
+                    status_data = status_response.json()
+                    api_status = status_data["status"]
+                    indexes = status_data.get("indexes_created", [])
+                    index_errors = status_data.get("index_errors", {})
 
-                # Convert indexes to strings for comparison
-                index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
-                
-                # Determine required indexes based on whether domain context was provided
-                # Check if domain context exists and is not the default
-                has_domain_context = bool(st.session_state.get("domain_context") and 
-                                        st.session_state.domain_context != "General video analysis")
-                required_indexes = get_required_indexes(has_domain_context)
-                
-                # Check if all required indexes are present
-                has_required_indexes = all(idx in index_names for idx in required_indexes)
-                
-                # Mark as completed if API says completed, even if some indexes failed
-                # The video is still usable with available indexes
-                if api_status == "completed":
-                    status = "completed"
-                else:
-                    status = api_status
-                
-                # Debug logging
-                if status != video_info.get("status"):
-                    st.sidebar.write(f"🔄 Status change for {video_id[:8]}...: {video_info.get('status')} → {status}")
-            else:
-                status = video_info.get("status", "unknown")
-                indexes = []
-        except requests.exceptions.RequestException as e:
-            # If connection fails, keep last known status
-            status = video_info.get("status", "unknown")
-            indexes = []
-            st.sidebar.write(f"⚠️ Status check failed for {video_id[:8]}...: {str(e)}")
+                    # Convert indexes to strings for comparison
+                    index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
+
+                    # Determine required indexes based on whether domain context was provided
+                    # Check if domain context exists and is not the default
+                    has_domain_context = bool(
+                        st.session_state.get("domain_context")
+                        and st.session_state.domain_context != "General video analysis"
+                    )
+                    required_indexes = get_required_indexes(has_domain_context)
+
+                    # Check if all required indexes are present
+                    has_required_indexes = all(idx in index_names for idx in required_indexes)
+
+                    # Mark as completed if API says completed, even if some indexes failed
+                    # The video is still usable with available indexes
+                    status = "completed" if api_status == "completed" else api_status
+
+                    # Debug logging
+                    if status != video_info.get("status"):
+                        st.sidebar.write(
+                            f"🔄 Status change for {video_id[:8]}...: "
+                            f"{video_info.get('status')} → {status}"
+                        )
+            except requests.exceptions.RequestException as e:
+                # If connection fails, keep last known status + cached indexes.
+                st.sidebar.write(f"⚠️ Status check failed for {video_id[:8]}...: {str(e)}")
         
-        # Update status in session state
+        # Update status in session state (persist indexes + errors for the
+        # next debounced rerun; see should_poll_status).
         old_status = st.session_state.uploaded_videos[video_id].get("status")
         st.session_state.uploaded_videos[video_id]["status"] = status
         st.session_state.uploaded_videos[video_id]["indexes"] = indexes
+        st.session_state.uploaded_videos[video_id]["index_errors"] = index_errors
 
         # Trigger UI refresh when status changes from processing to completed
         if old_status == "processing" and status == "completed":
@@ -825,8 +858,20 @@ def show_video_library():
             if st.sidebar.button(button_text, key=f"select_{video_id}", use_container_width=True):
                 st.session_state.active_video_id = video_id
                 st.rerun()
-            
+
         st.sidebar.markdown("---")
+
+        # Step 12: local-only clear button. Drops the client-side video cache +
+        # chat history. Does NOT call the backend — uploaded videos remain on
+        # the server and will reappear if the user re-connects them.
+        if st.sidebar.button("🧹 Clear uploaded videos", use_container_width=True,
+                             help="Remove all videos from this session view and reset the chat. "
+                                  "Backend-side data is untouched."):
+            st.session_state.uploaded_videos = {}
+            st.session_state.active_video_id = None
+            st.session_state.chat_history = []
+            st.session_state.last_status_poll = {}
+            st.rerun()
 
 
 def show_domain_context_panel():
@@ -937,16 +982,23 @@ def show_chat_interface():
     index_names = [idx.value if hasattr(idx, 'value') else str(idx).upper() for idx in indexes]
     has_required_indexes = all(idx in index_names for idx in required_indexes)
 
-    # Get index errors from API for the active video
-    index_errors = {}
-    try:
-        current_url = get_api_base_url()
-        status_response = requests.get(f"{current_url}/video/{st.session_state.active_video_id}/status", timeout=5)
-        if status_response.status_code == 200:
-            status_data = status_response.json()
-            index_errors = status_data.get("index_errors", {})
-    except requests.exceptions.RequestException:
-        pass  # If status check fails, continue without errors
+    # Get index errors from API for the active video. Sidebar polling already
+    # populated `index_errors` in session_state on the most recent fetch, so we
+    # reuse that if the debounce says "don't poll again yet".
+    index_errors = video_info.get("index_errors", {})
+    if should_poll_status(st.session_state.active_video_id):
+        try:
+            current_url = get_api_base_url()
+            status_response = requests.get(
+                f"{current_url}/video/{st.session_state.active_video_id}/status",
+                timeout=STATUS_POLL_TIMEOUT_SEC,
+            )
+            if status_response.status_code == 200:
+                status_data = status_response.json()
+                index_errors = status_data.get("index_errors", {})
+                st.session_state.uploaded_videos[st.session_state.active_video_id]["index_errors"] = index_errors
+        except requests.exceptions.RequestException:
+            pass  # Keep cached errors if the API is flaky.
     
     # Check for errors and missing indexes
     all_possible_indexes = ["AUDIO", "IMAGE", "DESCRIPTION", "DOMAIN"]
@@ -1025,7 +1077,18 @@ def show_chat_interface():
                 f'</div>',
                 unsafe_allow_html=True
             )
-            
+
+            # Step 11/12: show a subtle badge when the answer isn't grounded
+            # to specific [M:SS] timestamps in the retrieved context. Pre-Step-11
+            # backends don't send `grounded`, so None is treated as "unknown"
+            # (no badge) to avoid lying about older responses.
+            if message.get("grounded") is False:
+                st.caption(
+                    "⚠️ Ungrounded response — the model didn't anchor this answer "
+                    "to specific video timestamps. Citations below are the retrieved "
+                    "chunks but the LLM didn't explicitly reference them."
+                )
+
             # Show citations if available
             if "citations" in message and message["citations"]:
                 with st.expander(f"📎 View Citations ({len(message['citations'])})"):
@@ -1068,7 +1131,7 @@ def show_chat_interface():
                         "query": user_query,
                         "domain_context": st.session_state.domain_context,
                     },
-                    timeout=120  # Chat can take longer
+                    timeout=CHAT_TIMEOUT_SEC,  # QUADRAG_CHAT_TIMEOUT_SEC env overrides this
                 )
                 
                 if response.status_code == 200:
@@ -1077,6 +1140,9 @@ def show_chat_interface():
                         "role": "assistant",
                         "content": data.get("answer", "No answer provided"),
                         "citations": data.get("citations", []),
+                        # Step 11: whether the backend could anchor the answer to
+                        # retrieved [M:SS] timestamps. None = pre-Step-11 backend.
+                        "grounded": data.get("grounded"),
                     })
                 else:
                     error_msg = f"Backend returned error {response.status_code}"
@@ -1186,7 +1252,7 @@ def main():
                 try:
                     # Upload video
                     files = {"file": (uploaded_file.name, uploaded_file.getvalue())}
-                    response = requests.post(f"{current_url}/upload-video", files=files, timeout=60)
+                    response = requests.post(f"{current_url}/upload-video", files=files, timeout=UPLOAD_TIMEOUT_SEC)
 
                     if response.status_code == 200:
                         data = response.json()

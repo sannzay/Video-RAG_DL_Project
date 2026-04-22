@@ -16,24 +16,38 @@ logger = logger.bind(name="SearchEngine")
 class VideoSearchEngine:
     """Search engine for querying all four semantic indexes."""
 
-    def __init__(self, video_id: str, session_id: Optional[str] = None):
+    def __init__(
+        self,
+        video_id: str,
+        session_id: Optional[str] = None,
+        domain_view_name: Optional[str] = None,
+    ):
         """Initialize the search engine.
 
         Args:
             video_id: Video identifier
-            session_id: Optional session ID for domain-specific search
+            session_id: Optional session ID (kept for compat; currently unused)
+            domain_view_name: Pre-resolved domain view name for this query's
+                domain_context, produced by
+                ``quadrag.video.domain_manager.ensure_domain_view``. When
+                ``None``, :meth:`search_domain_index` returns an empty list —
+                the caller is responsible for deciding whether to surface this.
 
         Raises:
             ValueError: If video not found in registry
         """
         self.video_id = video_id
         self.session_id = session_id
+        self.domain_view_name = domain_view_name
         self.video_info = get_video_from_registry(video_id)
-        
+
         if not self.video_info:
             raise ValueError(f"Video {video_id} not found in registry")
 
-        logger.info(f"Initialized search engine for video {video_id}")
+        logger.info(
+            f"Initialized search engine for video {video_id} "
+            f"(domain_view={domain_view_name})"
+        )
 
     def search_image_index(
         self, query_image: Image.Image, top_k: Optional[int] = None
@@ -115,22 +129,31 @@ class VideoSearchEngine:
             try:
                 sims = audio_view.transcript_text.similarity(query_text)
                 results = audio_view.select(
-                    audio_view.start_time_sec,
-                    audio_view.end_time_sec,
+                    audio_view.segment_start,
+                    audio_view.segment_end,
                     audio_view.transcript_text,
                     similarity=sims,
                 ).order_by(sims, asc=False).limit(top_k)
                 
-                # Convert to RetrievalResult - collect() can cause event loop issues
+                # Convert to RetrievalResult. On music-only / silent segments
+                # Whisper returns an empty transcript, which can leave similarity
+                # or the text field as None — skip those rows instead of blowing
+                # the whole search up (and falling back to keyword match, which
+                # also would find nothing).
                 retrieval_results = []
                 try:
                     results_list = results.collect()
                     for entry in results_list:
+                        text = entry.get("transcript_text")
+                        sim = entry.get("similarity")
+                        start = entry.get("segment_start")
+                        if not text or sim is None or start is None:
+                            continue
                         retrieval_results.append(
                             RetrievalResult(
-                                content=entry["transcript_text"],
-                                timestamp=float(entry["start_time_sec"]),
-                                similarity=float(entry["similarity"]),
+                                content=str(text),
+                                timestamp=float(start),
+                                similarity=float(sim),
                                 source=IndexType.AUDIO,
                             )
                         )
@@ -138,21 +161,29 @@ class VideoSearchEngine:
                     logger.warning(f"Failed to collect similarity results: {e}, falling back to text search")
                     retrieval_results = []
             except (AttributeError, Exception) as e:
-                # If embedding index doesn't exist, use text-based search across ALL chunks
-                logger.warning(f"Embedding index not available, using text search across all chunks: {e}")
+                # Post-Step-6 the embedding index is always built during indexing, so
+                # hitting this branch means something went wrong: indexing didn't finish,
+                # the view is missing the column, or Pixeltable raised on .similarity().
+                # Fall back to keyword matching so the user still gets *some* answer,
+                # but warn loudly so the root cause can be found in logs.
+                logger.warning(
+                    f"Audio embedding index missing or .similarity() failed for "
+                    f"video {self.video_id}; falling back to keyword match. This "
+                    f"usually means indexing did not complete. Error: {e}"
+                )
 
                 # Get all audio chunks data - now running in proper async context
                 try:
                     logger.info("Collecting all audio chunks with pre-computed transcriptions...")
 
                     # Collect ALL chunks, not just a limited subset
-                    print("DEBUG: About to collect audio chunks for search")
+                    logger.debug("About to collect audio chunks for search")
                     all_chunks = audio_view.select(
-                        audio_view.start_time_sec,
-                        audio_view.end_time_sec,
+                        audio_view.segment_start,
+                        audio_view.segment_end,
                         audio_view.transcript_text,
                     ).collect()
-                    print(f"DEBUG: Audio collect completed, got {len(all_chunks)} chunks")
+                    logger.debug(f"Audio collect completed, got {len(all_chunks)} chunks")
 
                     logger.info(f"Successfully collected {len(all_chunks)} audio chunks for comprehensive search")
 
@@ -180,11 +211,11 @@ class VideoSearchEngine:
                     # Handle both dict and object access patterns
                     if isinstance(chunk, dict):
                         text = str(chunk.get("transcript_text", "")).lower().strip()
-                        start_time = float(chunk.get("start_time_sec", 0))
+                        start_time = float(chunk.get("segment_start", 0))
                         transcript_text = str(chunk.get("transcript_text", ""))
                     else:
                         text = str(chunk.get("transcript_text", "")).lower().strip()
-                        start_time = float(chunk.get("start_time_sec", 0))
+                        start_time = float(chunk.get("segment_start", 0))
                         transcript_text = str(chunk.get("transcript_text", ""))
 
                     if not text:
@@ -207,10 +238,10 @@ class VideoSearchEngine:
                 for chunk, score in scored_chunks[:top_k]:
                     if isinstance(chunk, dict):
                         content = str(chunk.get("transcript_text", ""))
-                        timestamp = float(chunk.get("start_time_sec", 0))
+                        timestamp = float(chunk.get("segment_start", 0))
                     else:
                         content = str(chunk.get("transcript_text", ""))
-                        timestamp = float(chunk.get("start_time_sec", 0))
+                        timestamp = float(chunk.get("segment_start", 0))
 
                     retrieval_results.append(
                         RetrievalResult(
@@ -304,112 +335,57 @@ class VideoSearchEngine:
     def search_domain_index(
         self, query_text: str, top_k: Optional[int] = None
     ) -> List[RetrievalResult]:
-        """Search Domain Captions Index using text similarity.
+        """Search the Domain Index via text-embedding similarity.
 
-        Args:
-            query_text: Query text
-            top_k: Number of results to return
-
-        Returns:
-            List of RetrievalResult objects
+        Post-Step-7 the Domain Index is a real Pixeltable view with an
+        embedding index on ``domain_caption``, so the code path mirrors
+        :meth:`search_description_index` exactly — no more difflib fallback.
         """
         try:
-            if not self.session_id:
-                logger.warning("No session_id provided for domain search")
-                return []
-
             if top_k is None:
                 top_k = settings.TOP_K_DOMAIN
 
             logger.info(f"Searching Domain Index with query: '{query_text[:50]}...'")
 
-            # Check if frames_view exists (avoid triggering property getter that calls pxt.get_table)
-            if not self.video_info.frames_view_name:
-                logger.info("Domain Index not available (requires image index)")
+            if not self.domain_view_name:
+                logger.info(
+                    "Domain Index not used for this query (no domain_view_name "
+                    "resolved — either no domain_context provided or lazy build failed)"
+                )
                 return []
 
-            # Try to get the frames view safely
             try:
-                frames_view = self.video_info.frames_view
+                import pixeltable as pxt
+                domain_view = pxt.get_table(self.domain_view_name)
             except Exception as e:
-                logger.warning(f"Domain Index not accessible: {e}")
+                logger.warning(f"Domain view {self.domain_view_name} not accessible: {e}")
                 return []
 
-            # Check if domain captions exist in registry
-            if not hasattr(self.video_info, 'domain_captions') or not self.video_info.domain_captions:
-                logger.warning("Domain captions not found in registry")
-                return []
+            try:
+                sims = domain_view.domain_caption.similarity(query_text)
+                results = domain_view.select(
+                    domain_view.pos_msec,
+                    domain_view.domain_caption,
+                    similarity=sims,
+                ).order_by(sims, asc=False).limit(top_k)
 
-            # Get domain captions from registry
-            domain_captions = self.video_info.domain_captions
-            domain_context = getattr(self.video_info, 'domain_context', 'unknown')
-            logger.info(f"Found {len(domain_captions)} domain captions in registry (context: '{domain_context}')")
-
-            # Since we can't use Pixeltable embeddings for stored data,
-            # we'll do a simple text similarity search
-            import difflib
-
-            # Score each caption against the query
-            scored_captions = []
-            query_lower = query_text.lower()
-
-            for pos_msec, caption in domain_captions.items():
-                caption_lower = caption.lower()
-
-                # Primary: sequence matching for overall similarity
-                sequence_similarity = difflib.SequenceMatcher(None, query_lower, caption_lower).ratio()
-
-                # Secondary: keyword matching - check if query words appear in caption
-                query_words = set(query_lower.split())
-                caption_words = set(caption_lower.split())
-
-                # Calculate word overlap
-                if query_words:
-                    word_overlap = len(query_words.intersection(caption_words)) / len(query_words)
-                else:
-                    word_overlap = 0.0
-
-                # Combined similarity: weighted average of sequence and word matching
-                combined_similarity = (sequence_similarity * 0.7) + (word_overlap * 0.3)
-
-                scored_captions.append({
-                    'pos_msec': pos_msec,
-                    'caption': caption,
-                    'similarity': combined_similarity,
-                    'sequence_sim': sequence_similarity,
-                    'word_overlap': word_overlap
-                })
-
-            # Sort by similarity and take top_k
-            scored_captions.sort(key=lambda x: x['similarity'], reverse=True)
-            top_results = scored_captions[:top_k]
-
-            # Log search results
-            logger.info(f"🔍 DOMAIN SEARCH RESULTS for '{query_text[:50]}...':")
-            for i, item in enumerate(top_results[:3]):  # Show top 3 results
-                similarity_pct = item['similarity'] * 100
-                sequence_pct = item.get('sequence_sim', 0) * 100
-                overlap_pct = item.get('word_overlap', 0) * 100
-                timestamp = item['pos_msec'] / 1000.0
-                logger.info(f"  #{i+1} ({similarity_pct:.1f}% seq:{sequence_pct:.1f}% word:{overlap_pct:.1f}%): {timestamp:.1f}s - {item['caption'][:100]}{'...' if len(item['caption']) > 100 else ''}")
-
-            # Convert to RetrievalResult
-            retrieval_results = []
-            for item in top_results:
-                # Lower threshold for domain captions since they're long and detailed
-                # Accept any result with similarity > 0.01 (1%) as domain captions are comprehensive
-                if item['similarity'] > 0.01:
+                retrieval_results: List[RetrievalResult] = []
+                for entry in results.collect():
                     retrieval_results.append(
                         RetrievalResult(
-                            content=item['caption'],
-                            timestamp=float(item['pos_msec']) / 1000.0,
-                            similarity=float(item['similarity']),
+                            content=entry["domain_caption"],
+                            timestamp=float(entry["pos_msec"]) / 1000.0,
+                            similarity=float(entry["similarity"]),
                             source=IndexType.DOMAIN,
                         )
                     )
 
-            logger.info(f"Found {len(retrieval_results)} domain results")
-            return retrieval_results
+                logger.info(f"Found {len(retrieval_results)} domain results")
+                return retrieval_results
+
+            except Exception as e:
+                logger.error(f"Domain similarity search failed: {e}")
+                return []
 
         except Exception as e:
             logger.error(f"Error searching Domain Index: {type(e).__name__}: {e}")

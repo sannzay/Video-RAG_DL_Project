@@ -47,6 +47,17 @@ data/cache/*
 *.log
 logs/
 
+# Pytest
+.pytest_cache/
+
+# Integration-test sample videos. ``tests/fixtures/sample.mp4`` is the
+# canonical ~3 MB Kandima Maldives clip used by the record-mode integration
+# tests and is committed to the repo. Other videos here are personal scratch
+# and stay local.
+tests/fixtures/*.mp4
+!tests/fixtures/sample.mp4
+tests/fixtures/*.mov
+
 # Jupyter
 .ipynb_checkpoints
 

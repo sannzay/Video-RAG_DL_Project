@@ -5,7 +5,6 @@
 pixeltable>=0.4.1
 groq>=0.11.0
 openai>=1.91.0
-google-generativeai>=0.8.0
 
 # Web Framework
 fastapi>=0.115.0

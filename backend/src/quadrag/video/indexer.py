@@ -1,25 +1,25 @@
 """Video indexer for creating the four semantic indexes."""
 
-import base64
 import os
-from io import BytesIO
 from typing import Optional
 
-import google.generativeai as genai
 import pixeltable as pxt
 from loguru import logger
-from openai import OpenAI
 from pixeltable.functions import openai as pxt_openai
 from pixeltable.functions.huggingface import clip
 from pixeltable.functions.openai import embeddings
 from pixeltable.functions.video import extract_audio
-from pixeltable.iterators import AudioSplitter
-from pixeltable.iterators.video import FrameIterator
+from pixeltable.functions.video import legacy_frame_iterator
 
 from quadrag.config import get_settings
 from quadrag.utils import calculate_frame_count, monitor_processing
 from quadrag.video.functions import extract_text_from_chunk, resize_image
-from quadrag.video.registry import get_video_from_registry, update_domain_view
+from quadrag.video.registry import (
+    add_domain_view,
+    build_domain_view_name,
+    get_video_from_registry,
+    hash_domain_context,
+)
 
 settings = get_settings()
 logger = logger.bind(name="VideoIndexer")
@@ -31,10 +31,9 @@ class VideoIndexer:
     def __init__(self):
         """Initialize the video indexer."""
         self.settings = settings
-        self.openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        genai.configure(api_key=settings.GOOGLE_API_KEY)
-        
-        # OpenAI API key should already be set at module level in api.py
+        # Ensure the OpenAI key is in the environment for Pixeltable's async UDFs
+        # (pxt_openai.vision / embeddings / transcriptions) to pick up. They read
+        # it lazily via openai.OpenAI() internally; we just need to make sure it's set.
         os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY
 
     def create_image_index(self, video_id: str) -> bool:
@@ -86,9 +85,9 @@ class VideoIndexer:
                 frames_view = pxt.create_view(
                     video_info.frames_view_name,
                     video_table,
-                    iterator=FrameIterator.create(
+                    iterator=legacy_frame_iterator(
                         video=video_table.video,
-                        num_frames=optimal_frame_count
+                        num_frames=optimal_frame_count,
                     ),
                     if_exists="replace_force",
                 )
@@ -104,9 +103,9 @@ class VideoIndexer:
                     frames_view = pxt.create_view(
                         video_info.frames_view_name,
                         video_table,
-                        iterator=FrameIterator.create(
+                        iterator=legacy_frame_iterator(
                             video=video_table.video,
-                            num_frames=fallback_frames
+                            num_frames=fallback_frames,
                         ),
                         if_exists="replace_force",
                     )
@@ -176,14 +175,20 @@ class VideoIndexer:
 
             # Create audio chunks view
             logger.info(f"Creating audio chunks view: {video_info.audio_view_name}")
+            # Pixeltable 0.5.x renamed AudioSplitter → audio_splitter and reshaped
+            # its params: chunk_duration_sec → duration, overlap_sec → overlap,
+            # min_chunk_duration_sec → min_segment_duration. The output columns
+            # also moved: audio_chunk → audio_segment, start_time_sec →
+            # segment_start, end_time_sec → segment_end.
+            from pixeltable.functions.audio import audio_splitter
             audio_view = pxt.create_view(
                 video_info.audio_view_name,
                 video_table,
-                iterator=AudioSplitter.create(
-                    audio=video_table.audio_extract,
-                    chunk_duration_sec=settings.AUDIO_CHUNK_LENGTH,
-                    overlap_sec=settings.AUDIO_OVERLAP_SECONDS,
-                    min_chunk_duration_sec=settings.AUDIO_MIN_CHUNK_DURATION_SECONDS,
+                iterator=audio_splitter(
+                    video_table.audio_extract,
+                    duration=settings.AUDIO_CHUNK_LENGTH,
+                    overlap=settings.AUDIO_OVERLAP_SECONDS,
+                    min_segment_duration=settings.AUDIO_MIN_CHUNK_DURATION_SECONDS,
                 ),
                 if_exists="replace_force",
             )
@@ -205,19 +210,18 @@ class VideoIndexer:
             except AttributeError:
                 # Column doesn't exist, add it
                 logger.info("Adding new transcription column...")
-                print(f"DEBUG: About to add transcription column for {chunk_count} chunks")
+                logger.debug(f"About to add transcription column for {chunk_count} chunks")
                 try:
                     audio_view.add_computed_column(
                         transcription=pxt_openai.transcriptions(
-                            audio=audio_view.audio_chunk,
+                            audio=audio_view.audio_segment,
                             model=settings.AUDIO_TRANSCRIPT_MODEL,
                         ),
                         if_exists="ignore",
                     )
-                    print("DEBUG: Transcription column added successfully")
+                    logger.debug("Transcription column added successfully")
                     logger.info("Transcription column added successfully (will compute on-demand)")
                 except Exception as e:
-                    print(f"DEBUG: Failed to add transcription column: {e}")
                     logger.error(f"Failed to add transcription column: {e}")
                     raise
 
@@ -228,33 +232,40 @@ class VideoIndexer:
                 logger.info("Transcript text column already exists, skipping addition")
             except AttributeError:
                 logger.info("Adding text extraction column...")
-                print("DEBUG: About to add text extraction column")
+                logger.debug("About to add text extraction column")
                 try:
                     audio_view.add_computed_column(
                         transcript_text=extract_text_from_chunk(audio_view.transcription),
                         if_exists="ignore",
                     )
-                    print("DEBUG: Text extraction column added successfully")
+                    logger.debug("Text extraction column added successfully")
                     logger.info("Text extraction column added successfully (will compute on-demand)")
                 except Exception as e:
-                    print(f"DEBUG: Failed to add text extraction column: {e}")
                     logger.error(f"Failed to add text extraction column: {e}")
                     raise
 
-            # Skip pre-computation to avoid blocking - transcriptions will be computed lazily during search
-            logger.info("Skipping pre-computation of transcriptions - will compute lazily during search")
-            print("DEBUG: Skipping transcription pre-computation to avoid blocking")
+            # Force Whisper to run on every chunk before we build the embedding index.
+            # Without this, add_embedding_index would trigger materialization as a
+            # side-effect, which can race with other query paths and swallows errors.
+            # Calling .collect() up-front makes Whisper failures loud and catchable.
+            logger.info("Pre-computing Whisper transcriptions for audio chunks")
+            audio_view.select(
+                audio_view.transcription,
+                audio_view.transcript_text,
+            ).collect()
+            logger.info("All transcriptions materialized")
 
-            # Skip embedding index creation to avoid blocking
-            # Embedding index creation would require all transcriptions to be computed first
-            # which would block for 10-30 minutes. Instead, we'll use text-based search
-            # which works immediately (though less accurate than semantic search)
-            logger.info("Skipping embedding index creation to avoid blocking")
-            logger.info("Note: Audio search will use text matching (faster, but less semantic)")
-            logger.info("Note: Embedding index can be created later via separate endpoint if needed")
+            # Build the semantic search index over the transcript text. Same pattern
+            # as create_description_index — relies on the transcript_text column
+            # already being populated by the .collect() above.
+            logger.info("Creating text embedding index on transcript_text")
+            audio_view.add_embedding_index(
+                column=audio_view.transcript_text,
+                string_embed=embeddings.using(model=settings.TEXT_EMBEDDING_MODEL),
+                if_exists="replace_force",
+            )
 
-            logger.info(f"Successfully created Audio Index structure for video {video_id}")
-            logger.info("Transcriptions pre-computed and available for search")
+            logger.info(f"Successfully created Audio Index for video {video_id}")
             return True
 
         except Exception as e:
@@ -293,13 +304,23 @@ class VideoIndexer:
                 logger.error(f"Frames view not found: {e}. Make sure Image Index is created first.")
                 return False
 
-            # Import our synchronous description function
-            from quadrag.video.functions import describe_image
-
-            # Add description column using synchronous UDF
-            logger.info("Adding description column using synchronous OpenAI Vision API")
+            # Step 9: use Pixeltable's native async vision UDF instead of our custom
+            # synchronous one. Pixeltable runs these concurrently with adaptive
+            # rate-limit throttling from OpenAI's response headers, which is the
+            # main performance lever for per-frame description. Prompt is a literal
+            # string; the image comes from the view column.
+            logger.info("Adding description column via pxt_openai.vision (async + throttled)")
             frames_view.add_computed_column(
-                description=describe_image(frames_view.resized_frame),
+                description=pxt_openai.vision(
+                    "Describe what is happening in this image in detail. "
+                    "Be specific about objects, people, actions, and setting.",
+                    frames_view.resized_frame,
+                    model=settings.IMAGE_CAPTION_MODEL,
+                    model_kwargs={
+                        "max_tokens": settings.VISION_MAX_TOKENS,
+                        "temperature": settings.VISION_TEMPERATURE,
+                    },
+                ),
                 if_exists="ignore",
             )
 
@@ -322,17 +343,25 @@ class VideoIndexer:
             return False
 
     def create_domain_index(
-        self, video_id: str, session_id: str, domain_context: str
-    ) -> bool:
-        """Create Domain Captions Index with context-specific captions.
+        self, video_id: str, domain_context: str
+    ) -> Optional[str]:
+        """Create a Pixeltable domain view for a (video, domain_context) pair.
 
-        Args:
-            video_id: Video identifier
-            session_id: Session identifier
-            domain_context: User-provided domain context
+        Post-Step-8 architecture:
+            * View name is ``{video_table_name}_domain_{context_hash}``,
+              where ``context_hash`` is an 8-char blake2b of the
+              lower/stripped domain context. One context → one view.
+            * The view derives from the frames view and adds a
+              ``domain_caption`` computed column driven by
+              ``pxt_openai.vision`` (Pixeltable-native async UDF with
+              adaptive throttling) with the domain context baked into the
+              literal prompt.
+            * A text-embedding index is built on ``domain_caption`` so search
+              is semantic (``.similarity()``), mirroring Description Index.
 
-        Returns:
-            True if successful
+        Returns the view name on success, ``None`` on failure. Callers
+        (both the eager upload path and the lazy ``/chat`` path) use the
+        return to know whether to surface an error.
         """
         # Ensure Pixeltable is initialized before any operations
         try:
@@ -344,160 +373,90 @@ class VideoIndexer:
 
         with monitor_processing(f"Domain index creation for {video_id}"):
             try:
+                if not domain_context or not isinstance(domain_context, str):
+                    raise ValueError("domain_context must be a non-empty string")
+
+                context_hash = hash_domain_context(domain_context)
                 logger.info(
                     f"Creating Domain Index for video {video_id} "
-                    f"with context: {domain_context}"
+                    f"(context='{domain_context}', hash={context_hash})"
                 )
+
                 video_info = get_video_from_registry(video_id)
                 if not video_info:
                     raise ValueError(f"Video {video_id} not found in registry")
 
-                # Check if frames_view exists and is accessible (requires image index)
-                if not hasattr(video_info, 'frames_view') or not video_info.frames_view:
-                    logger.warning(f"Cannot create Domain Index for video {video_id}: Image index not available (frames_view attribute missing)")
-                    logger.info(f"Domain context will be used for text-based search only")
-                    # Still update the domain view to indicate domain context is set
-                    domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
-                    update_domain_view(video_id, domain_view_name)
-                    return True
-
-                # Try to access frames_view to ensure it exists in Pixeltable
+                # Domain Index depends on the frames view (built by create_image_index).
                 try:
                     frames_view = video_info.frames_view
-                    # Test if frames_view is actually accessible by checking if it has data
-                    test_count = frames_view.count()
-                    if test_count == 0:
-                        logger.warning(f"Frames view exists but is empty for video {video_id}")
-                        logger.info(f"Domain context will be used for text-based search only")
-                        domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
-                        update_domain_view(video_id, domain_view_name)
-                        return True
+                    if frames_view.count() == 0:
+                        logger.error(f"Frames view for {video_id} is empty; cannot build Domain Index")
+                        return None
                 except Exception as e:
-                    logger.warning(f"Cannot create Domain Index for video {video_id}: Frames view not accessible ({e})")
-                    logger.info(f"Domain context will be used for text-based search only")
-                    # Still update the domain view to indicate domain context is set
-                    domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
-                    update_domain_view(video_id, domain_view_name)
-                    return True
+                    logger.error(
+                        f"Frames view not accessible for {video_id}; "
+                        f"Domain Index requires Image Index to have succeeded. Error: {e}"
+                    )
+                    return None
 
-                # Create domain-specific captions by manually processing each frame
-                # Store them in registry for search access (avoiding Pixeltable UDF issues)
-                logger.info(f"Creating domain captions for {video_id} with context: {domain_context}")
+                domain_view_name = build_domain_view_name(
+                    video_info.video_table_name, context_hash
+                )
 
-                # Get all frames
-                frames_data = list(frames_view.select(
-                    frames_view.pos_msec,
-                    frames_view.resized_frame
-                ).collect())
+                logger.info(f"Creating domain view: {domain_view_name}")
+                domain_view = pxt.create_view(
+                    domain_view_name,
+                    frames_view,
+                    if_exists="replace_force",
+                )
 
-                logger.info(f"Processing {len(frames_data)} frames for domain captions")
+                # Step 9: Pixeltable-native vision UDF with the domain context baked
+                # into the prompt literal. Same async+throttled path as the
+                # description index — no per-row context column needed.
+                domain_prompt = (
+                    f"Analyze this image in the context of: {domain_context}\n\n"
+                    f"Describe what you see with specific focus on elements relevant to "
+                    f"{domain_context}. Be detailed about objects, actions, and visual "
+                    f"elements that would be important in this domain context."
+                )
+                logger.info("Adding domain_caption computed column via pxt_openai.vision")
+                domain_view.add_computed_column(
+                    domain_caption=pxt_openai.vision(
+                        domain_prompt,
+                        domain_view.resized_frame,
+                        model=settings.IMAGE_CAPTION_MODEL,
+                        model_kwargs={
+                            "max_tokens": settings.VISION_MAX_TOKENS,
+                            "temperature": settings.VISION_TEMPERATURE,
+                        },
+                    ),
+                    if_exists="replace_force",
+                )
 
-                # Process frames in batches to manage memory and API rate limits
-                domain_captions = {}
-                batch_size = 5  # Process 5 frames at a time
-                total_frames = len(frames_data)
+                # Mirror the audio-index fix from Step 6: materialize captions before
+                # building the embedding index so failures are loud and catchable.
+                logger.info("Pre-computing domain captions")
+                domain_view.select(domain_view.domain_caption).collect()
 
-                with monitor_processing("Domain index creation"):
-                    for batch_start in range(0, total_frames, batch_size):
-                        batch_end = min(batch_start + batch_size, total_frames)
-                        batch_frames = frames_data[batch_start:batch_end]
+                logger.info("Creating text embedding index on domain_caption")
+                domain_view.add_embedding_index(
+                    column=domain_view.domain_caption,
+                    string_embed=embeddings.using(model=settings.TEXT_EMBEDDING_MODEL),
+                    if_exists="replace_force",
+                )
 
-                        logger.info(f"Processing batch {batch_start//batch_size + 1}/{(total_frames + batch_size - 1)//batch_size}: "
-                                   f"frames {batch_start}-{batch_end-1}")
-
-                        # Process each frame in the current batch
-                        for i, frame_data in enumerate(batch_frames):
-                            frame_idx = batch_start + i
-                            try:
-                                frame_image = frame_data['resized_frame']
-                                pos_msec = frame_data['pos_msec']
-
-                                # Generate caption using direct API call
-                                try:
-                                    # Convert PIL Image to base64
-                                    buffer = BytesIO()
-                                    frame_image.save(buffer, format="PNG")
-                                    img_base64 = base64.b64encode(buffer.getvalue()).decode()
-
-                                    # Create OpenAI client
-                                    client = OpenAI()
-
-                                    # Create domain-specific prompt
-                                    prompt = f"""Analyze this image in the context of: {domain_context}
-
-Describe what you see, focusing on elements that are most relevant to understanding {domain_context}.
-- If the scene contains people, analyze their expressions, body language, and interactions
-- If the scene shows actions or objects, describe how they relate to {domain_context}
-- Highlight any visual elements that demonstrate concepts related to {domain_context}
-- Be specific about what you're observing rather than making assumptions
-
-Provide a clear, factual description of the visual content."""
-
-                                    # Make synchronous API call
-                                    response = client.chat.completions.create(
-                                        model="gpt-4o-mini",
-                                        messages=[{
-                                            "role": "user",
-                                            "content": [
-                                                {"type": "text", "text": prompt},
-                                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
-                                            ]
-                                        }],
-                                        max_tokens=200,
-                                        temperature=0.3
-                                    )
-
-                                    if response and response.choices and len(response.choices) > 0:
-                                        description = response.choices[0].message.content
-                                        if description and isinstance(description, str):
-                                            caption = description.strip() or f"Empty description for {domain_context}"
-                                        else:
-                                            caption = f"Invalid response format for {domain_context}"
-                                    else:
-                                        caption = f"No response from vision API for {domain_context}"
-
-                                except Exception as e:
-                                    error_msg = str(e)[:100]
-                                    caption = f"Domain caption unavailable ({domain_context}): {error_msg}"
-
-                                domain_captions[pos_msec] = caption
-
-                                # Log each generated caption
-                                logger.info(f"Frame {pos_msec/1000:.1f}s: {caption[:200]}{'...' if len(caption) > 200 else ''}")
-
-                            except Exception as e:
-                                logger.warning(f"Failed to generate caption for frame at {pos_msec}: {e}")
-                                domain_captions[pos_msec] = f"Domain caption unavailable: {str(e)[:50]}"
-
-                        # Add rate limiting between batches to avoid API limits
-                        if batch_end < total_frames:
-                            logger.info("Rate limiting: waiting 2 seconds before next batch...")
-                            import time
-                            time.sleep(2)
-
-                # Store domain captions in registry for search access
-                # This avoids Pixeltable UDF and embedding issues
-                from quadrag.video.registry import update_domain_captions
-                update_domain_captions(video_id, domain_captions, domain_context)
-
-                logger.info(f"Stored {len(domain_captions)} domain captions in registry")
-
-                # Log summary of all generated captions
-                logger.info(f"📋 DOMAIN CAPTIONS SUMMARY for video {video_id} (context: '{domain_context}'):")
-                for pos_msec, caption in sorted(domain_captions.items()):
-                    timestamp = pos_msec / 1000.0
-                    logger.info(f"  {timestamp:.1f}s: {caption}")
-
-                # Update the domain view to indicate domain context is set
-                domain_view_name = f"{video_info.video_table_name}_domain_{session_id[:8]}"
-                update_domain_view(video_id, domain_view_name)
-
-                logger.info(f"Successfully created Domain Index for video {video_id} with context: {domain_context}")
-                return True
+                add_domain_view(video_id, domain_context, domain_view_name)
+                logger.info(
+                    f"Successfully created Domain Index for video {video_id} "
+                    f"(context='{domain_context}', view={domain_view_name})"
+                )
+                return domain_view_name
 
             except Exception as e:
                 logger.error(f"Failed to create Domain Index: {e}")
-                return False
+                import traceback
+                logger.debug(f"Domain index traceback: {traceback.format_exc()}")
+                return None
 
 
 # Global indexer instance
