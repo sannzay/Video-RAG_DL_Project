@@ -563,8 +563,11 @@ def _finalize_wizard_if_ready() -> None:
 
     if status == "failed" or ready:
         # Migrate wizard transcript into this video's chat history so it
-        # becomes the opening of the chat, then clear the wizard.
+        # becomes the opening of the chat. Also stash the uploaded file bytes
+        # so the regular chat view can offer the same mini-preview.
         st.session_state.chat_history[flow["video_id"]] = list(flow["conversation"])
+        if flow.get("file_bytes"):
+            info["file_bytes"] = flow["file_bytes"]
         st.session_state.new_video_flow = _empty_flow()
         st.toast("Video ready", icon="🎉")
         st.rerun()
@@ -677,8 +680,29 @@ def _render_step_await_domain() -> None:
                 _advance_to_domain("⏭️ Skip", "")
 
 
+def _render_video_preview(file_bytes: bytes) -> None:
+    """Mini video preview, centered and width-constrained to ~60% of the
+    bubble so it doesn't dominate the chat layout.
+
+    ``st.video`` embeds an HTML5 ``<video>`` tag; starts paused + muted by
+    default so it never autoplays sound at the user. The browser caches the
+    bytes, so re-renders across reruns don't re-download — but we still take
+    care to keep this OUT of the 5-second auto-polling fragment so the player
+    doesn't reset while the progress bar ticks.
+    """
+    if not file_bytes:
+        return
+    cols = st.columns([1, 3, 1])
+    with cols[1]:
+        st.video(file_bytes, muted=True)
+
+
 def _render_step_await_confirm() -> None:
+    flow = st.session_state.new_video_flow
     with st.chat_message("assistant"):
+        if flow.get("file_bytes"):
+            _render_video_preview(flow["file_bytes"])
+            st.markdown("")  # spacer between preview and buttons
         cols = st.columns([2, 1])
         with cols[0]:
             if st.button("🚀 Start indexing", type="primary", use_container_width=True, key="wiz_start"):
@@ -688,22 +712,24 @@ def _render_step_await_confirm() -> None:
                 _go_back_to_domain()
 
 
-@st.fragment(run_every=AUTO_POLL_EVERY_SEC)
 def _render_step_processing() -> None:
-    """Processing view rendered inside a chat_message, wrapped in a fragment
-    so it auto-polls every 5 s without a full-app rerun. Completion handoff
-    happens inside ``_finalize_wizard_if_ready``, called at the top of
-    ``render_new_video_wizard`` (which is itself re-invoked by the fragment)."""
+    """Outer (non-polling) shell for the processing step: renders the static
+    parts (chat bubble wrapper + video preview + header caption) once per
+    full rerun, then delegates the polling progress bar to a fragment.
+
+    Keeping the video preview OUT of the fragment prevents the HTML5 video
+    element from re-rendering every 5 seconds, which would reset the
+    playhead and cause visible flicker.
+    """
     flow = st.session_state.new_video_flow
     video_id = flow.get("video_id")
     if not video_id:
         return
 
     with st.chat_message("assistant"):
-        fresh = refresh_video_status(video_id, force=True)
-        info = st.session_state.uploaded_videos.setdefault(video_id, {})
-        info.update(fresh)
-        done = [i for i in fresh["indexes"] if i in EAGER_INDEXES]
+        if flow.get("file_bytes"):
+            _render_video_preview(flow["file_bytes"])
+            st.markdown("")  # spacer
 
         st.markdown(
             f"**Processing `{flow['file_name']}`…**  \n"
@@ -712,21 +738,32 @@ def _render_step_processing() -> None:
             f"messages until indexing completes.</span>",
             unsafe_allow_html=True,
         )
-        st.progress(len(done) / max(1, len(EAGER_INDEXES)),
-                    text=f"{len(done)}/{len(EAGER_INDEXES)} indexes built")
-        if fresh["index_errors"]:
-            for k, v in fresh["index_errors"].items():
-                if k.upper() in EAGER_INDEXES:
-                    st.warning(f"⚠️ **{k}**: {v[:200]}")
+        _processing_poll_fragment(video_id)
 
-        # Finalization is handled up in render_new_video_wizard; this fragment
-        # only RENDERS state. It triggers its own re-run every 5 s via run_every,
-        # but the outer app keeps its state.
-        ready = video_is_ready(fresh["indexes"]) or fresh["status"] == "completed"
-        if ready or fresh["status"] == "failed":
-            # Escalate to app-level rerun so the outer dispatch migrates +
-            # swaps to the real chat view.
-            st.rerun(scope="app")
+
+@st.fragment(run_every=AUTO_POLL_EVERY_SEC)
+def _processing_poll_fragment(video_id: str) -> None:
+    """The only thing that ticks every 5 s. Finalization itself runs at the
+    top of ``render_new_video_wizard`` via ``_finalize_wizard_if_ready``;
+    this fragment just escalates to an app-level rerun when it sees the
+    eager indexes are ready or the job failed."""
+    fresh = refresh_video_status(video_id, force=True)
+    info = st.session_state.uploaded_videos.setdefault(video_id, {})
+    info.update(fresh)
+    done = [i for i in fresh["indexes"] if i in EAGER_INDEXES]
+
+    st.progress(
+        len(done) / max(1, len(EAGER_INDEXES)),
+        text=f"{len(done)}/{len(EAGER_INDEXES)} indexes built",
+    )
+    if fresh["index_errors"]:
+        for k, v in fresh["index_errors"].items():
+            if k.upper() in EAGER_INDEXES:
+                st.warning(f"⚠️ **{k}**: {v[:200]}")
+
+    ready = video_is_ready(fresh["indexes"]) or fresh["status"] == "completed"
+    if ready or fresh["status"] == "failed":
+        st.rerun(scope="app")
 
 
 # ---------------------------------------------------------------------------
@@ -914,6 +951,14 @@ def _render_video_header(video_id: str, info: dict[str, Any]) -> None:
     if info.get("domain_context"):
         meta_bits.append(f"lens: *{info['domain_context']}*")
     st.caption(" · ".join(meta_bits))
+
+    # Collapsible preview. Only shown when we actually have the file bytes in
+    # session_state (i.e. this browser session was the one that uploaded). A
+    # second browser opening the same backend wouldn't have the bytes and
+    # simply won't see the expander — that's honest, not a bug.
+    if info.get("file_bytes"):
+        with st.expander("📺 Preview", expanded=False):
+            _render_video_preview(info["file_bytes"])
 
 
 def _render_index_pills(indexes: list[str], index_errors: dict[str, str], has_domain: bool) -> None:
