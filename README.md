@@ -1,399 +1,354 @@
-# 🎬 QuadRAG: Four-Index Multimodal RAG for Video Understanding
+# 🎬 QuadRAG · Four-Index Multimodal RAG for Video
 
-<div align="center">
-
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)](https://fastapi.tiangolo.com/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)](https://streamlit.io/)
+[![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.40+-ff4b4b.svg)](https://streamlit.io/)
+[![Pixeltable](https://img.shields.io/badge/Pixeltable-0.5+-4f46e5.svg)](https://github.com/pixeltable/pixeltable)
+[![Tests](https://img.shields.io/badge/tests-117%20passing-16a34a.svg)](#testing)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**A training-free multimodal video comprehension system that uses four parallel semantic indexes for rich, context-aware question answering about video content.**
+**A training-free, semantically-rich video-QA system.** Upload an MP4; QuadRAG
+builds four parallel embedding indexes (visual frames, spoken audio, AI frame
+descriptions, optional domain-specific lens), then lets you chat with the
+video. Every answer is anchored to specific timestamps, and the UI tells you
+when the model is just guessing vs. actually grounded in retrieved content.
 
-[🎥 **Live Demo**](https://sanjayrag.streamlit.app/) •
-[📖 **Dataset**](https://drive.google.com/drive/folders/137n7bzC6G31L7hohG8WWN6T8-4JsiarW?usp=drive_link)
+🚀 **Live apps**
 
----
-
-### ✨ **Step-by-Step UI Screenshots**
-
-| **Step 1: Domain Context Setup** | **Step 2: Video Upload** | **Step 3: Processing** | **Step 4: Question Answering** |
-|:--------------------------------:|:------------------------:|:----------------------:|:------------------------------:|
-| ![Domain Setup](images/Image_1.png) | ![Video Upload](images/Image_2.png) | ![Processing](images/Image_3.png) | ![Q&A](images/Image_4.png) |
-
-*Click images to view full-size screenshots*
+* Backend API → <https://quadrag-backend-production.up.railway.app>
+* Frontend UI → <https://video-ragdlproject-hezrklx8rnhbjwucqvegxq.streamlit.app>
 
 ---
 
-</div>
+## What's different about this one
 
-## 🚀 **Key Features**
+* **Four indexes, all genuinely semantic.** Earlier revisions shipped two
+  embedding indexes + a `difflib`-scored text shim. Now every index — image,
+  audio, description, *and* domain — is a real vector search over transformer
+  embeddings. You can tell the domain index works because it contributes
+  citations alongside the description index for queries where the user's
+  lens matters ("from a marketing angle, what's the hook?").
+* **Lazy, per-context domain views.** Each video can hold up to 5 simultaneous
+  domain lenses ("emotions", "marketing", "storytelling" …), built on the first
+  `/chat` that needs them and LRU-evicted beyond that. Ask the same video the
+  same kind of question in a new lens without reprocessing.
+* **Citation grounding.** After the LLM writes an answer, a regex pulls
+  `[M:SS]` timestamps it cites and the backend filters the returned
+  citations to those within a ±3 s window. If the model's answer has no
+  timestamps, the UI flags it as "Ungrounded" — the model may still be
+  right, but you know it's not anchored to specific moments.
+* **Interactive chat-style onboarding.** New-video setup happens inside the
+  chat, not a modal. The bot asks for the file, offers 6 preset domain
+  lenses (plus custom input and skip), confirms, runs, and hands off to
+  the real conversation — all without leaving the main area.
 
-### 🎯 **Four Semantic Indexes**
-- **🎬 Image Index**: Raw video frames with CLIP embeddings for visual search
-- **🎵 Audio Index**: Transcribed spoken dialogue with semantic embeddings
-- **📝 Description Index**: AI-generated frame descriptions with text embeddings
-- **🎭 Domain Index**: Context-specific captions based on user-defined domain focus
-
-### ⚡ **Advanced Capabilities**
-- 🔄 **Dynamic Domain Captioning**: Generate domain-specific content on-the-fly
-- 🧠 **Intelligent Fusion**: Weighted retrieval across all four indexes
-- 📊 **Resource Monitoring**: CPU, memory, and processing time tracking
-- 🔧 **Adaptive Processing**: Frame sampling based on video duration
-- 🛡️ **Thread Isolation**: Stable async processing with event loop protection
-- 📱 **Responsive UI**: Modern Streamlit interface with real-time status
-
-### 🎨 **User Experience**
-- 💬 Conversational Q&A interface
-- 📈 Real-time processing status with progress indicators
-- 🔄 Re-processing capability for failed index creation
-- 📋 Citation tracking for answer provenance
-- 🎭 Domain context customization per session
-
-## 🏗️ **Architecture**
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Streamlit Frontend                       │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ Domain       │  │ Video        │  │ Chat         │      │
-│  │ Context      │  │ Upload       │  │ Interface    │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            │ HTTP API
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      FastAPI Backend                         │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │              Video Processing Pipeline               │   │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐│   │
-│  │  │ Extract │→ │ Process │→ │ Create  │→ │  Store  ││   │
-│  │  │ Frames  │  │ Audio   │  │ Indexes │  │  Index  ││   │
-│  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘│   │
-│  └──────────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │              Four Semantic Indexes                   │   │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐│   │
-│  │  │  Image  │  │  Audio  │  │  Desc   │  │ Domain  ││   │
-│  │  │  Index  │  │  Index  │  │  Index  │  │ Index   ││   │
-│  │  │  CLIP   │  │ Whisper │  │ OpenAI  │  │ OpenAI  ││   │
-│  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘│   │
-│  └──────────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │              RAG Pipeline                            │   │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐│   │
-│  │  │ Search  │→ │  Fuse   │→ │Generate │→ │ Return  ││   │
-│  │  │ Indexes │  │ Results │  │  with   │  │ Answer  ││   │
-│  │  │         │  │         │  │  Groq   │  │         ││   │
-│  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘│   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Pixeltable Storage                        │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │              PostgreSQL + pgvector                   │   │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐│   │
-│  │  │  Frames │  │ Audio   │  │  Desc   │  │ Domain  ││   │
-│  │  │  + CLIP │  │ Chunks  │  │  Embed  │  │ Captions││   │
-│  │  │ Embed   │  │ + Text  │  │         │  │         ││   │
-│  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘│   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                      Streamlit frontend                       │
+│   In-chat wizard · per-video chat · status dot · previews    │
+└──────────────────────────────────────────────────────────────┘
+                              │ HTTPS
+                              ▼
+┌──────────────────────────────────────────────────────────────┐
+│                       FastAPI backend                         │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │               Background indexing pipeline             │  │
+│  │  transcode → frames view → CLIP embed                  │  │
+│  │          │            └→ audio chunks → Whisper        │  │
+│  │          │                              → text embed   │  │
+│  │          └→ per-frame descriptions → text embed        │  │
+│  │          └→ per-frame domain captions (lazy, per lens) │  │
+│  └────────────────────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │               Retrieval + generation                   │  │
+│  │  ./similarity() on each index  →  weighted fusion      │  │
+│  │                   → LLM answer + [M:SS] grounding      │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────┐
+│  Pixeltable (PostgreSQL + pgvector) · per-video table+views  │
+│  frames view ┬ description + embed                           │
+│              └ domain view 1, 2, …, N · each with own embed  │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-## 🛠️ **Technology Stack**
+## Models
 
-| **Category** | **Technology** | **Purpose** |
-|-------------|---------------|-------------|
-| **AI/ML** | Groq (Llama 4 Scout/Maverick) | Conversational Q&A generation |
-| | OpenAI GPT-4o-mini | Image descriptions & domain captions |
-| | OpenAI text-embedding-3-small | Text embeddings |
-| | CLIP (openai/clip-vit-base-patch32) | Image embeddings |
-| **Vector DB** | Pixeltable + PostgreSQL + pgvector | Multimodal vector storage & retrieval |
-| **Backend** | FastAPI + Uvicorn | REST API with async processing |
-| **Frontend** | Streamlit | Interactive web UI |
-| **Video Processing** | FFmpeg + OpenCV | Frame extraction & audio processing |
-| **Audio** | Whisper-1 | Speech-to-text transcription |
-| **Deployment** | Railway (Nixpacks) | Cloud hosting with auto-scaling |
+| Use | Model |
+|---|---|
+| Chat answer generation | **Meta Llama 3.3 70B Instruct** |
+| Frame vision captions (description + domain indexes) | **Google Gemini 2.0 Flash** |
+| Audio transcription (audio index) | OpenAI **Whisper-1** |
+| Text embeddings (audio / description / domain indexes) | OpenAI **text-embedding-3-small** |
+| Visual frame embeddings (image index) | **CLIP** · `openai/clip-vit-base-patch32` (local PyTorch) |
 
-## 📋 **Prerequisites**
+## Tech stack
 
-- **Python**: 3.10 or higher
-- **API Keys**: Groq, OpenAI, and Google AI (optional)
-- **Storage**: 2GB+ free disk space for video processing
-- **Memory**: 8GB+ RAM recommended for large videos
+| Layer | Choice |
+|---|---|
+| Backend framework | FastAPI + Uvicorn, Python 3.11 |
+| Frontend | Streamlit (+ `st.chat_message`, `st.chat_input`, `@st.fragment`) |
+| Vector DB | [Pixeltable](https://github.com/pixeltable/pixeltable) 0.5+ (PostgreSQL + pgvector under the hood) |
+| Local ML | PyTorch 2.1 CPU, transformers, sentence-transformers |
+| Video processing | FFmpeg (transcode, frame extraction, audio extraction) |
+| Deployment | Railway (Nixpacks) for the API, Streamlit Cloud for the UI |
+| Testing | pytest (unit, ~2 s) + pytest-recording (opt-in VCR integration) |
 
-## 🚀 **Quick Start**
+## Features
 
-### **Option 1: One-Command Setup (Recommended)**
+### Four semantic indexes
+* **Image** — raw video frames, CLIP embeddings, visual similarity search
+* **Audio** — Whisper transcripts of ~10 s audio chunks, text-embedding similarity
+* **Description** — AI-generated frame captions (what's in each frame), text-embedding similarity
+* **Domain** — frame captions rewritten through a user-supplied lens ("emotions", "marketing", …), text-embedding similarity. **Lazy-built on first chat** with a new lens; LRU-evicted at 5 views per video
+
+### Retrieval
+* Per-index top-K search with configurable weights (audio 0.30, description 0.25, domain 0.25, image 0.20)
+* Min-max score normalization, weighted fusion, 2-second timestamp deduplication
+* Returns top-10 fused results by default
+
+### Generation + grounding
+* LLM prompt asks for citations in `[M:SS]` format
+* Post-processing extracts cited timestamps and filters citations to matching chunks within ±3 s
+* `ChatResponse.grounded: bool` flag surfaces how trustworthy the answer is
+
+### Operations
+* **Thread-safe processing state store** with atomic disk snapshots; status survives restarts
+* **Adaptive frame sampling** — 40/60/80/100 frames for <5 min / <30 min / <1 h / <2 h videos, 100–150 for longer
+* **Auto-polling UI** — `@st.fragment(run_every=5)` updates the processing view without a full rerun
+* **Per-browser video preview** — the uploaded file renders inside the chat during setup and in a collapsible header expander during chat
+
+## Prerequisites
+
+* Python 3.11 (pinned in `backend/runtime.txt`)
+* FFmpeg on PATH (for local dev; Railway's Nixpacks ships it)
+* API keys (see [Configuration](#configuration))
+* ≥ 4 GB free disk for the dev venv (PyTorch + transformers are chonky)
+
+## Quick start
+
+### Local dev
 
 ```bash
-# Clone and setup everything
 git clone https://github.com/sannzay/Video-RAG_DL_Project.git
-cd QuadRAG
-./setup_env.sh  # Sets up Python environment and dependencies
+cd Video-RAG_DL_Project
+
+# backend venv + deps
+./setup_env.sh
+
+# set API keys
+cp backend/.env.example backend/.env   # or create one; see Configuration
+$EDITOR backend/.env
+
+# start the API (terminal 1)
+./start_backend.sh                     # http://localhost:8000
+
+# start the UI (terminal 2)
+./start_frontend.sh                    # http://localhost:8501
 ```
 
-### **Option 2: Manual Setup**
+The frontend defaults to `QUADRAG_API_URL=http://localhost:8000`. To point
+at a remote backend instead:
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/sannzay/Video-RAG_DL_Project.git
-cd QuadRAG
-
-# 2. Set up Python environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# 3. Install dependencies
-pip install -r backend/requirements.txt
-pip install -r frontend/requirements.txt
-
-# 4. Configure API keys
-cp .env.example .env
-# Edit .env with your API keys
-```
-
-### **Option 3: Railway Deployment (Cloud)**
-
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/XXXXXX)
-
-1. Connect your GitHub repository to Railway
-2. Set environment variables in Railway dashboard:
-   ```
-   GROQ_API_KEY=your_groq_key
-   OPENAI_API_KEY=your_openai_key
-   GOOGLE_API_KEY=your_google_key
-   ```
-3. Deploy automatically on every push
-
-## 🎯 **Usage Guide**
-
-### **Step 1: Start the Application**
-
-```bash
-# Start backend API (in one terminal)
-./start_backend.sh
-
-# Start frontend UI (in another terminal)
+export QUADRAG_API_URL=https://your-backend.example.com
 ./start_frontend.sh
 ```
 
-Or for Railway deployment, the app starts automatically.
+### Deploy
 
-### **Step 2: Access the Interface**
+* **Backend → Railway.** `railway up` from the repo root. Needs
+  `OPENAI_API_KEY` and `OPENROUTER_API_KEY` set in the project's variables.
+  See `railway.toml` and `nixpacks.toml` for the build recipe — do not
+  reorder the pip installs in `nixpacks.toml` without testing; `numpy<2` +
+  CPU-only torch order matters for image size.
+* **Frontend → Streamlit Cloud.** Point at `frontend/app.py` on the `main`
+  branch. Set `QUADRAG_API_URL` in the app's Secrets to the Railway URL.
 
-- **Local**: Open http://localhost:8501
-- **Railway**: Use your Railway deployment URL
+## Usage
 
-### **Step 3: Configure Domain Context**
+1. Click **➕ New video** in the sidebar.
+2. Upload an MP4 in the chat bubble that appears.
+3. Pick a domain lens from the presets (😊 Emotions, 🎬 Actions,
+   📢 Marketing, 📚 Educational, 🎭 Storytelling, 🏞️ Travel), type your own,
+   or skip.
+4. Confirm. Indexing runs with an auto-polling progress bar; chat input is
+   disabled until eager indexes finish.
+5. When the bot says "✅ Indexing complete", ask anything. Answers
+   come back with timestamped citations; click **Citations** to see the
+   retrieved chunks.
 
-Set your domain focus for intelligent video understanding:
-- *"Capture emotions and facial expressions"*
-- *"Focus on technical demonstrations and tutorials"*
-- *"Analyze dialogue and conversation patterns"*
-- *"Track object interactions and movements"*
+## Configuration
 
-### **Step 4: Upload & Process Video**
+### Environment variables
 
-1. **Upload**: Drag & drop MP4 files (up to 500MB, 2 hours)
-2. **Process**: Watch real-time progress across four indexes
-3. **Monitor**: View CPU/memory usage and processing times
+| Variable | Required | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` | ✅ | Whisper transcription + text embeddings |
+| `OPENROUTER_API_KEY` | ✅ | Chat + vision model provider |
+| `QUADRAG_API_URL` | frontend | Override the backend base URL (default `http://localhost:8000`) |
+| `QUADRAG_CHAT_TIMEOUT_SEC` | frontend | Chat HTTP timeout, default 120 |
+| `QUADRAG_UPLOAD_TIMEOUT_SEC` | frontend | Upload HTTP timeout, default 60 |
+| `QUADRAG_STATUS_POLL_TIMEOUT_SEC` | frontend | `/status` HTTP timeout, default 10 |
+| `QUADRAG_STATUS_POLL_INTERVAL_SEC` | frontend | Min seconds between `/status` polls, default 2 |
+| `PORT` | backend | Railway sets this automatically |
+| `RAILWAY_ENVIRONMENT` | backend | Auto-set by Railway; flips path resolution to `/app/data/…` |
 
-### **Step 5: Ask Questions**
+### Tuning knobs
 
-Get comprehensive answers with citations:
-- *"What emotions are shown in the video?"*
-- *"Describe the main activities happening"*
-- *"What technical concepts are demonstrated?"*
+All in `backend/src/quadrag/config.py`; override via environment variables of the same name.
 
-## 📁 **Project Structure**
+| Setting | Default | Notes |
+|---|---|---|
+| `SPLIT_FRAMES_COUNT` | 40 | Fallback when duration can't be read; `calculate_frame_count` overrides per-duration (40 → 60 → 80 → 100 → 100-150 for ≤5m / ≤30m / ≤1h / ≤2h / longer) |
+| `AUDIO_CHUNK_LENGTH` | 10 s | Whisper chunk size |
+| `AUDIO_OVERLAP_SECONDS` | 1 s | Chunk overlap |
+| `TOP_K_{AUDIO,IMAGE,DESCRIPTION,DOMAIN}` | 3 | Per-index top-K before fusion |
+| `FUSION_TOP_K` | 10 | Citations returned after fusion |
+| `WEIGHT_{AUDIO,IMAGE,DESCRIPTION,DOMAIN}` | 0.30 / 0.20 / 0.25 / 0.25 | Fusion weights |
+| `FUSION_DEDUP_WINDOW_SEC` | 2.0 | Collapse near-duplicate timestamps |
+| `MAX_DOMAIN_VIEWS_PER_VIDEO` | 5 | LRU cap on concurrent domain lenses per video |
+| `CITATION_TIMESTAMP_TOLERANCE_SEC` | 3.0 | Grounding window (±) for [M:SS] → retrieved chunk matching |
+
+## Project structure
 
 ```
-QuadRAG/
-├── 📁 backend/                          # FastAPI backend
-│   ├── 📄 api.py                        # Main API application
-│   ├── 📄 pyproject.toml                # Backend dependencies
-│   └── 📁 src/quadrag/                  # Core modules
-│       ├── 📄 config.py                 # Application settings
-│       ├── 📄 models.py                 # Pydantic data models
-│       ├── 📄 utils.py                  # Utility functions
-│       ├── 📁 video/                    # Video processing
-│       │   ├── 📄 processor.py          # Video ingestion
-│       │   ├── 📄 indexer.py            # Index creation
-│       │   └── 📄 registry.py           # Video metadata storage
-│       ├── 📁 retrieval/                # Search & retrieval
-│       │   ├── 📄 search_engine.py      # Multi-index search
-│       │   └── 📄 fusion.py             # Result fusion
-│       └── 📁 generation/               # RAG generation
-│           └── 📄 rag_generator.py      # LLM-powered Q&A
-├── 📁 frontend/                         # Streamlit UI
-│   ├── 📄 app.py                        # Main application
-│   └── 📄 requirements.txt              # Frontend dependencies
-├── 📁 data/                             # Data storage
-│   ├── 📁 videos/                       # Uploaded video files
-│   └── 📁 cache/                        # Pixeltable cache
-├── 📄 railway.toml                     # Railway deployment config
-├── 📄 nixpacks.toml                    # Nixpacks build config
-├── 📄 start_backend.sh                 # Backend startup script
-├── 📄 start_frontend.sh                # Frontend startup script
-└── 📄 README.md                        # This file
+Video-RAG_DL_Project/
+├── backend/
+│   ├── api.py                          # FastAPI entrypoint; lifespan + endpoints
+│   ├── requirements.txt                # Production deps
+│   ├── requirements-dev.txt            # pytest + pytest-recording + pytest-asyncio
+│   ├── runtime.txt                     # Python 3.11.9 pin for Railway
+│   └── src/quadrag/
+│       ├── config.py                   # Pydantic Settings
+│       ├── models.py                   # API request/response shapes
+│       ├── utils.py                    # FFmpeg, frame-count schedule, monitoring
+│       ├── state/                      # ProcessingStateStore (thread-safe, disk-backed)
+│       ├── video/
+│       │   ├── processor.py            # Ingestion + orphan cleanup
+│       │   ├── indexer.py              # All four indexes live here
+│       │   ├── functions.py            # Pixeltable UDFs (CLIP resize, vision caption, …)
+│       │   ├── domain_manager.py       # Lazy domain-view creation + LRU
+│       │   └── registry.py             # Per-video metadata, JSON-backed
+│       ├── retrieval/
+│       │   ├── search_engine.py        # Per-index .similarity() queries
+│       │   └── fusion.py               # Normalize, weight, dedup, top-K
+│       └── generation/
+│           └── rag_generator.py        # Chat answer + citation grounding
+├── frontend/
+│   ├── app.py                          # Streamlit UI (in-chat wizard, auto-poll, per-video chat)
+│   └── requirements.txt
+├── tests/
+│   ├── unit/                           # 117 tests, ~2 s, no external services
+│   ├── integration/                    # Opt-in via `pytest -m integration`, VCR-replayed
+│   ├── fixtures/sample.mp4             # 2.9 MB Kandima Maldives clip
+│   └── README.md                       # VCR record/replay workflow
+├── scripts/
+│   └── benchmark_indexing.py           # Time each index build for a sample video
+├── .streamlit/config.toml              # Streamlit theme (indigo on slate)
+├── railway.toml                        # Railway service config
+├── nixpacks.toml                       # Nixpacks build recipe
+├── pytest.ini                          # Default-excludes integration tests
+├── CHANGELOG.md                        # Per-step refactor notes
+├── CLAUDE.md                           # Onboarding doc for contributors
+└── README.md                           # This file
 ```
 
-## ⚙️ **Configuration**
-
-### **Environment Variables**
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GROQ_API_KEY` | ✅ | Groq API key for conversational AI |
-| `OPENAI_API_KEY` | ✅ | OpenAI API key for vision and embeddings |
-| `GOOGLE_API_KEY` | ❌ | Google AI API key (optional fallback) |
-| `QUADRAG_API_URL` | ❌ | Custom API URL (for local development) |
-| `PORT` | ❌ | Server port (Railway sets automatically) |
-
-### **Processing Configuration**
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `SPLIT_FRAMES_COUNT` | 45 | Number of frames to extract (adaptive) |
-| `AUDIO_CHUNK_LENGTH` | 10s | Audio chunk duration |
-| `MAX_VIDEO_SIZE_MB` | 500 | Maximum video file size |
-| `MAX_DURATION_SECONDS` | 7200 | Maximum video duration (2 hours) |
-
-## 🔧 **Development**
-
-### **Running Tests**
+## Testing
 
 ```bash
-# Backend API tests
-cd backend
-python -m pytest tests/
+# unit only (default)
+backend/.venv/bin/python -m pytest
 
-# Video processing tests
-python test_video_processing.py
-
-# Search functionality tests
-python test_search_engine.py
+# integration (needs VCR cassettes or live API keys; see tests/README.md)
+pytest tests/integration -m integration --record-mode=once  # first-time record
+pytest tests/integration -m integration                     # replay
 ```
 
-### **Local Development Setup**
+117 unit tests cover: result fusion, citation grounding, frame-count
+bucket boundaries, the Whisper-JSON text extractor, `ProcessingStateStore`
+concurrency + persistence, domain-view registry (add/touch/drop/LRU),
+registry round-trip schema migration (three generations), and
+`VideoIndexInfo` legacy-dict tolerance.
 
-```bash
-# Start backend in development mode
-cd backend
-uvicorn api:app --reload --host 0.0.0.0 --port 8000
+## Performance expectations
 
-# Start frontend in another terminal
-cd frontend
-streamlit run app.py --server.port 8501 --server.address 0.0.0.0
-```
+Indexing times for a ~20 s clip (Kandima Maldives 2.9 MB fixture):
 
-### **Contributing**
+| Stage | Approx time |
+|---|---|
+| Transcode + frame view | 5–10 s |
+| Audio index (Whisper + embed) | 5–10 s |
+| Image index (CLIP) | 10–20 s |
+| Description index (vision + embed) | 20–30 s |
+| **Eager total (what you wait for before chatting)** | **~40–70 s** |
+| Domain index (lazy, on first chat with a new lens) | +20–40 s |
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes and add tests
-4. Run tests: `python -m pytest`
-5. Commit: `git commit -m "Add feature"`
-6. Push: `git push origin feature-name`
-7. Create a Pull Request
+Subsequent chats with the same video + same lens: ~1–3 s each. Fresh lens
+triggers another domain-view build (~20–40 s) then caches.
 
-## 📊 **Performance & Limitations**
+Processing time scales roughly linearly with duration (frame count
+schedule is 40/60/80/100 for <5 min / <30 min / <1 h / <2 h).
 
-### **Processing Times** (Approximate)
-- **Short videos** (< 5 min): 2-5 minutes
-- **Medium videos** (5-30 min): 5-15 minutes
-- **Long videos** (30-120 min): 15-45 minutes
+## Limitations
 
-### **Resource Requirements**
-- **CPU**: Multi-core recommended for parallel processing
-- **RAM**: 8GB+ for optimal performance
-- **Storage**: 2-10GB per hour of video content
+* MP4 (H.264) only. H.264 High profile is transcoded to Main on ingest;
+  other codecs aren't tested.
+* 500 MB / 2-hour upload cap enforced in `validate_video_size`.
+* English-primary Whisper defaults; multilingual works but hasn't been
+  tuned.
+* Per-video lens cap is 5 (LRU). Switching between more than 5 lenses on
+  the same video triggers rebuilds.
+* First chat with a brand-new lens on a long video can exceed the 60 s
+  edge-proxy cap on Railway. UI tells you to retry; the second request
+  hits cache and returns fast.
 
-### **Current Limitations**
-- MP4 format support (H.264 recommended)
-- English language audio transcription
-- API rate limits for vision models
-- Maximum 2-hour video duration
+## Troubleshooting
 
-## 🐛 **Troubleshooting**
+**Video says "Processing…" forever.** Auto-poll hits `/status` every 5 s;
+if it's genuinely stuck, check `railway logs` and look for
+`Failed to create <Index> Index: …`. Most often it's an API auth issue
+or a Pixeltable migration needed by a version bump.
 
-### **Common Issues**
+**`/chat` returns 200 but chat UI shows "Ungrounded".** That's expected
+when the LLM's answer doesn't contain `[M:SS]` tokens. The citations are
+the raw retrieved chunks; the badge just flags that they're not tied to
+specific model-cited moments.
 
-**❌ "IndexError: pop from an empty deque"**
-- **Cause**: Asyncio event loop corruption
-- **Solution**: Thread isolation implemented (no action needed)
+**Frontend shows "Connection issue" briefly after first load.** The
+health probe only flips red after two consecutive failed probes, so a
+single slow cold-start shouldn't trigger it. If it persists, double-check
+`QUADRAG_API_URL` in the frontend's Secrets.
 
-**❌ "Video processing timeout"**
-- **Cause**: Large video files or slow network
-- **Solution**: Reduce video size or increase Railway plan
+**Chat input is disabled and I'm not in the wizard.** Something upstream
+reset flow state. Click **✕ Cancel setup** in the sidebar; it clears the
+wizard and the input re-enables.
 
-**❌ "API key not configured"**
-- **Cause**: Missing environment variables
-- **Solution**: Set API keys in Railway dashboard or `.env` file
+## Contributing
 
-### **Debug Mode**
+1. Fork + feature branch
+2. `pip install -r backend/requirements.txt -r backend/requirements-dev.txt`
+3. Make your changes. Add tests.
+4. `pytest` locally; ensure 117 pass (or more, if you added)
+5. Open a PR
 
-```bash
-# Enable detailed logging
-export QUADRAG_LOG_LEVEL=DEBUG
+## License
 
-# Start with debug output
-./start_backend.sh
-```
+MIT — see [LICENSE](LICENSE).
 
+## Acknowledgments
 
-## 🤝 **Contributing**
-
-We welcome contributions!
-
-### **Development Setup**
-
-```bash
-# Install development dependencies
-pip install -r requirements-dev.txt
-
-# Run tests
-pytest
-
-# Check code quality
-black . --check
-isort . --check-only
-flake8
-```
-
-## 📄 **License**
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 **Acknowledgments**
-
-- **Pixeltable** for the excellent vector database framework
-- **Groq** for fast LLM inference
-- **OpenAI** for vision and embedding models
-- **Streamlit** for the amazing UI framework
-- **Railway** for cloud deployment infrastructure
-
-## 📞 **Support**
-
-- **📧 Email**: [sannzayreddy@gmail.com](mailto:sannzayreddy@gmail.com)
-- **🐛 Issues**: [GitHub Issues](https://github.com/sannzay/Video-RAG_DL_Project/issues)
-- **💬 Discussions**: [GitHub Discussions](https://github.com/sannzay/Video-RAG_DL_Project/discussions)
+* [Pixeltable](https://github.com/pixeltable/pixeltable) for the multimodal
+  table abstraction that underpins every index.
+* [Streamlit](https://streamlit.io/) for the chat primitives +
+  `@st.fragment` that make the in-chat wizard possible.
+* [Railway](https://railway.app/) for Nixpacks + the simple deploy story.
 
 ---
 
-<div align="center">
-
-**Made with ❤️ for multimodal video understanding**
-
-[⭐ Star us on GitHub](https://github.com/sannzay/Video-RAG_DL_Project) •
-[🎥 Watch Demo](https://sanjayrag.streamlit.app/)
-
-</div>
-
----
-
-*Last updated: December 2025*
+**Questions / issues** → [GitHub Issues](https://github.com/sannzay/Video-RAG_DL_Project/issues) ·
+**Email** → [sannzayreddy@gmail.com](mailto:sannzayreddy@gmail.com)
