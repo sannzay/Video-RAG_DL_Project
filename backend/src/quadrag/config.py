@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
     # === Video Processing Configuration ===
-    SPLIT_FRAMES_COUNT: int = 20  # Cost-safe default; calculate_frame_count overrides per-duration
+    SPLIT_FRAMES_COUNT: int = 40  # Fallback when ffprobe can't read duration; calculate_frame_count overrides otherwise
     AUDIO_CHUNK_LENGTH: int = 10  # Seconds per chunk
     AUDIO_OVERLAP_SECONDS: int = 1
     AUDIO_MIN_CHUNK_DURATION_SECONDS: int = 1

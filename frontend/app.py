@@ -73,8 +73,19 @@ st.set_page_config(
 
 _CSS = """
 <style>
-  [data-testid="stToolbar"] { visibility: hidden; height: 0; }
+  /* Keep Streamlit's top toolbar visible — it holds the sidebar expand/collapse
+     button. Hiding stToolbar globally (as we did before) also hid the "open
+     sidebar" chevron when the user collapsed it, leaving no way to reopen. */
   .block-container { padding-top: 1.5rem; padding-bottom: 6rem; max-width: 1100px; }
+
+  /* Belt-and-suspenders: explicitly ensure the sidebar collapse/expand button
+     is visible on newer Streamlit versions that nest it differently. */
+  [data-testid="stSidebarCollapseButton"],
+  [data-testid="stSidebarCollapsedControl"],
+  [data-testid="collapsedControl"] {
+    visibility: visible !important;
+    display: block !important;
+  }
 
   /* Sidebar new-video button styling — makes it feel like ChatGPT's "New chat". */
   [data-testid="stSidebar"] .stButton > button[kind="primary"] {

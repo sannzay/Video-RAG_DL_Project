@@ -233,30 +233,45 @@ def get_video_duration(video_path: str) -> float:
 
 
 def calculate_frame_count(video_duration_seconds: float) -> int:
-    """Calculate optimal frame count based on video duration.
+    """Adaptive frame-sampling schedule.
 
-    Reduced from the original schedule to stay well under OpenAI's
-    Tier-1 gpt-4o-mini TPM limit (200 k/min). Each frame runs through
-    ``pxt_openai.vision`` twice (description + domain) at roughly
-    1.5 k tokens/call, so 20 frames × 2 indexes = 60 k TPM — leaves plenty
-    of headroom for concurrent embedding calls and Whisper. Bumping frames
-    back up requires a higher OpenAI tier.
+    Calibrated around the two hard real-world constraints we've measured:
+
+    * **Lazy domain-view build hits Railway's 60 s edge-proxy cap.**
+      ``/chat`` with a fresh ``domain_context`` synchronously runs
+      ``pxt_openai.vision`` (OpenRouter → gemini-2.0-flash) on every frame
+      plus an embedding index, inside a single HTTP request. Empirically:
+      ~0.5–0.7 s per vision call with Pixeltable's async concurrency
+      + ~7 s for view creation/embedding index. 80 frames sits around
+      ~55 s — the edge of the cliff. Above that, first-chat with a new
+      lens starts hitting client timeouts, though the view still builds
+      server-side and the second chat hits cache.
+
+    * **Eager description-index build** (during upload's background thread)
+      has a 30-minute budget, so it tolerates much higher frame counts
+      without issue.
+
+    The schedule below chooses the same N for both indexes — simpler, and
+    keeps the lazy-build path predictable. If you push these much higher,
+    also expect the first-query retry-on-cache-hit UX documented in the
+    wizard spinner.
     """
     if video_duration_seconds <= 0:
-        return 20  # Default fallback
+        return 40  # Default fallback when ffprobe can't read duration
 
     if video_duration_seconds < 300:      # < 5 min
-        return 20
+        return 40
     elif video_duration_seconds < 1800:   # < 30 min
-        return 30
-    elif video_duration_seconds < 3600:   # < 1 h
-        return 45
-    elif video_duration_seconds < 7200:   # < 2 h
         return 60
+    elif video_duration_seconds < 3600:   # < 1 h
+        return 80
+    elif video_duration_seconds < 7200:   # < 2 h
+        return 100
     else:                                  # very long videos
-        # Roughly 1 frame per 2 min, capped at 90 so a full movie stays
-        # under Tier-1 TPM for the domain-index build.
-        return min(90, max(60, int(video_duration_seconds // 120)))
+        # Roughly 1 frame per 90 s, floored at 100, capped at 150. Lazy
+        # domain builds on videos this long may exceed the 60 s edge cap
+        # on the first query — that's surfaced as "try again" in the UI.
+        return min(150, max(100, int(video_duration_seconds // 90)))
 
 
 def validate_video_size(file_path: str) -> bool:
