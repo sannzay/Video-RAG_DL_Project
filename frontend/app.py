@@ -1,26 +1,33 @@
 """QuadRAG — Streamlit frontend.
 
-Redesign goals (vs. the pre-2026-04-22 revision):
+Design notes after the second UX pass:
 
-* Linear flow: upload → status → chat. One main area at a time.
-* Calm visual language. No rainbow gradients, generous whitespace, muted
-  semantic colors, and Streamlit's native chat / status / expander widgets
-  where they beat hand-rolled HTML.
-* Honest status reporting. The backend's domain view is lazy-built on first
-  chat with a new domain_context, so "DOMAIN index missing" is the normal
-  pre-chat state and must NOT be surfaced as a failure.
-* Forgiving connection handling. The old sidebar flipped to "Backend
-  Disconnected" on the first slow probe (Railway cold-start, typically ~3 s
-  over the edge proxy). Now we only alarm after two consecutive confirmed
-  failures, keep the dot subtle, and never contradict the main area.
+* Upload lives at the **top of the sidebar** like a "New chat" button, not in
+  the main content area. Clicking it opens a modal that asks for a domain
+  lens *first*, then the MP4 — enforcing the correct chronology (pick the
+  lens → upload → index → chat).
+* Domain context is **per-video**, not a session-global. Each video remembers
+  the lens it was indexed with; chat queries use that lens automatically.
+* Chat history is **keyed by video_id** so switching videos shows the right
+  conversation, not a shared jumble.
+* Processing status **auto-polls** via ``@st.fragment(run_every=5)``. No more
+  "click Refresh". The main area flips to the chat view as soon as the
+  eager indexes finish.
+* ``[M:SS]`` citations in the answer text are **escaped before
+  markdown rendering** so back-to-back references don't get swallowed as
+  reference-link syntax. Grounding detection runs on the raw text, so the
+  grounded flag stays accurate.
+* ``st.chat_input`` gets a prominent border + shadow so it doesn't disappear
+  at the bottom of the page.
 
-All env var overrides (QUADRAG_API_URL, QUADRAG_*_TIMEOUT_SEC,
-QUADRAG_STATUS_POLL_INTERVAL_SEC) keep their Step-12 semantics.
+Connection handling, environment var overrides, and the grounding helpers
+are unchanged from the first redesign.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -38,19 +45,18 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 
 DEFAULT_BACKEND_URL = "http://localhost:8000"
-
-# Env-var overrides — see CLAUDE.md §5
 API_BASE_URL = os.getenv("QUADRAG_API_URL", DEFAULT_BACKEND_URL)
 CHAT_TIMEOUT_SEC = int(os.getenv("QUADRAG_CHAT_TIMEOUT_SEC", "120"))
 UPLOAD_TIMEOUT_SEC = int(os.getenv("QUADRAG_UPLOAD_TIMEOUT_SEC", "60"))
 STATUS_POLL_TIMEOUT_SEC = int(os.getenv("QUADRAG_STATUS_POLL_TIMEOUT_SEC", "10"))
 STATUS_POLL_INTERVAL_SEC = float(os.getenv("QUADRAG_STATUS_POLL_INTERVAL_SEC", "2.0"))
 CONNECTION_CHECK_INTERVAL_SEC = 15.0
+AUTO_POLL_EVERY_SEC = 5.0
 
-# Indexes the backend guarantees to build eagerly at upload time.
-# DOMAIN is lazy-built on the first /chat with a domain_context, so it's
-# intentionally NOT in this list — treating a missing DOMAIN at upload time
-# as a failure is what the old UI got wrong.
+# Indexes the backend guarantees to build eagerly at upload time. DOMAIN is
+# lazy — built on first chat with a domain_context — so it's intentionally
+# absent from this list. The old UI treating "DOMAIN not present at upload"
+# as a failure is what produced the "DOMAIN failed" false alarm.
 EAGER_INDEXES = ["IMAGE", "AUDIO", "DESCRIPTION"]
 
 st.set_page_config(
@@ -62,28 +68,24 @@ st.set_page_config(
 
 
 # ---------------------------------------------------------------------------
-# Minimal CSS — Streamlit's native theme handles most of it (see
-# .streamlit/config.toml). Only small surgical tweaks live here.
+# Minimal CSS — baseline theme is in .streamlit/config.toml.
 # ---------------------------------------------------------------------------
 
 _CSS = """
 <style>
-  /* Hide the default Streamlit top bar hamburger/menu when embedded. */
   [data-testid="stToolbar"] { visibility: hidden; height: 0; }
+  .block-container { padding-top: 1.5rem; padding-bottom: 6rem; max-width: 1100px; }
 
-  /* Tighter main-area top padding — the default wastes ~80px. */
-  .block-container { padding-top: 2rem; padding-bottom: 3rem; max-width: 1100px; }
+  /* Sidebar new-video button styling — makes it feel like ChatGPT's "New chat". */
+  [data-testid="stSidebar"] .stButton > button[kind="primary"] {
+    border-radius: 10px;
+    font-weight: 600;
+    padding: 0.5rem 0.8rem;
+  }
 
   /* Status dot in header. */
-  .status-dot {
-    display: inline-block;
-    width: 0.55rem; height: 0.55rem;
-    border-radius: 50%;
-    margin-right: 0.4rem;
-    vertical-align: middle;
-  }
+  .status-dot { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.4rem; vertical-align: middle; }
   .status-ok   { background: #16a34a; }
-  .status-warn { background: #eab308; }
   .status-err  { background: #dc2626; }
 
   /* Index-pill badges. */
@@ -101,7 +103,7 @@ _CSS = """
   .idx-lazy { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
   .idx-off  { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
 
-  /* Subtle citation block. */
+  /* Citation cards. */
   .citation-card {
     background: #f8fafc;
     border: 1px solid #e2e8f0;
@@ -115,7 +117,6 @@ _CSS = """
   .citation-meta { color: #64748b; font-size: 0.75rem; margin-bottom: 0.2rem; }
   .citation-meta .src { font-weight: 600; color: #4338ca; margin-right: 0.4rem; text-transform: uppercase; letter-spacing: 0.05em; }
 
-  /* "Ungrounded" subtle pill above an answer. */
   .ungrounded-note {
     display: inline-block;
     font-size: 0.78rem;
@@ -127,17 +128,45 @@ _CSS = """
     margin-bottom: 0.6rem;
   }
 
-  /* Footer hint. */
-  .app-footer {
-    color: #64748b;
-    font-size: 0.78rem;
-    text-align: center;
-    padding-top: 2rem;
+  /* Timestamp chips inside answers. */
+  .ts-chip {
+    display: inline-block;
+    background: #eef2ff;
+    color: #4338ca;
+    border: 1px solid #c7d2fe;
+    padding: 0.05rem 0.4rem;
+    margin: 0 0.1rem;
+    border-radius: 5px;
+    font-size: 0.82em;
+    font-family: ui-monospace, Menlo, monospace;
   }
 
-  /* Hero (empty state) */
+  /* Make st.chat_input pop — was invisible at the bottom. */
+  [data-testid="stChatInput"],
+  [data-testid="stChatInputContainer"] {
+    border: 2px solid #4f46e5 !important;
+    border-radius: 14px !important;
+    box-shadow: 0 6px 20px rgba(79, 70, 229, 0.15) !important;
+    background: #ffffff !important;
+  }
+  [data-testid="stChatInput"] textarea {
+    font-size: 1rem !important;
+    padding: 0.85rem 1rem !important;
+  }
+  [data-testid="stChatInput"]:focus-within {
+    box-shadow: 0 8px 24px rgba(79, 70, 229, 0.25) !important;
+  }
+
+  /* Sticky-ish bottom fade so the chat input doesn't blur into content above. */
+  [data-testid="stBottomBlockContainer"] {
+    background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.95) 18%, #ffffff 40%);
+    padding-top: 1rem;
+  }
+
   .hero-title { font-size: 1.75rem; font-weight: 600; margin: 0 0 0.4rem; letter-spacing: -0.02em; }
   .hero-sub   { color: #475569; font-size: 0.98rem; margin: 0 0 1.6rem; }
+
+  .app-footer { color: #64748b; font-size: 0.78rem; text-align: center; padding-top: 2rem; }
 </style>
 """
 
@@ -149,10 +178,9 @@ _CSS = """
 def _init_state() -> None:
     defaults = {
         "session_id": str(uuid.uuid4()),
-        "domain_context": "",
         "active_video_id": None,
-        "chat_history": [],
-        "uploaded_videos": {},         # video_id → {filename, upload_time, status, indexes, index_errors, grounded_domain}
+        "chat_history": {},            # video_id → list[message]
+        "uploaded_videos": {},         # video_id → {filename, status, indexes, index_errors, domain_context, ...}
         "last_status_poll": {},        # video_id → unix ts
         "last_connection_check": 0.0,
         "connection_ok": True,
@@ -164,7 +192,7 @@ def _init_state() -> None:
 
 
 # ---------------------------------------------------------------------------
-# API client (tiny, typed, tolerant)
+# API client
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -178,13 +206,9 @@ def _api_url(path: str) -> str:
 
 
 def check_backend(force: bool = False) -> ConnectionState:
-    """Probe /health. Only updates state if enough time has elapsed — avoids
-    hammering the backend on every Streamlit rerun. Only alarms after two
-    consecutive failures, so a single slow probe doesn't flip the UI red."""
     now = time.time()
     if not force and (now - st.session_state.last_connection_check) < CONNECTION_CHECK_INTERVAL_SEC:
         return ConnectionState(st.session_state.connection_ok, st.session_state.connection_msg)
-
     st.session_state.last_connection_check = now
     try:
         r = requests.get(_api_url("/health"), timeout=STATUS_POLL_TIMEOUT_SEC)
@@ -201,18 +225,20 @@ def check_backend(force: bool = False) -> ConnectionState:
         st.session_state.connection_fail_streak += 1
         if st.session_state.connection_fail_streak >= 2:
             st.session_state.connection_ok = False
-            # Shorten the exception message; the full urllib3 wall of text isn't useful.
-            brief = type(e).__name__
-            st.session_state.connection_msg = f"Connection issue ({brief})"
-
+            st.session_state.connection_msg = f"Connection issue ({type(e).__name__})"
     return ConnectionState(st.session_state.connection_ok, st.session_state.connection_msg)
 
 
-def upload_video(file) -> Optional[dict[str, Any]]:
+def upload_video(file, domain_context: Optional[str]) -> Optional[dict[str, Any]]:
+    data = {}
+    if domain_context:
+        data["domain_context"] = domain_context
+        data["session_id"] = st.session_state.session_id
     try:
         r = requests.post(
             _api_url("/upload-video"),
             files={"file": (file.name, file.getvalue())},
+            data=data,
             timeout=UPLOAD_TIMEOUT_SEC,
         )
         if r.status_code == 200:
@@ -235,16 +261,16 @@ def _should_refetch_status(video_id: str) -> bool:
     return False
 
 
-def refresh_video_status(video_id: str) -> dict[str, Any]:
-    """Fetch /status if the debounce allows; otherwise return the cached view.
-    Always returns a dict with keys: status, indexes, index_errors."""
+def refresh_video_status(video_id: str, force: bool = False) -> dict[str, Any]:
     cached = st.session_state.uploaded_videos.get(video_id, {})
-    if not _should_refetch_status(video_id):
+    if not force and not _should_refetch_status(video_id):
         return {
             "status": cached.get("status", "unknown"),
             "indexes": cached.get("indexes", []),
             "index_errors": cached.get("index_errors", {}),
         }
+    if force:
+        st.session_state.last_status_poll[video_id] = time.time()
     try:
         r = requests.get(_api_url(f"/video/{video_id}/status"), timeout=STATUS_POLL_TIMEOUT_SEC)
         if r.status_code == 200:
@@ -258,7 +284,6 @@ def refresh_video_status(video_id: str) -> dict[str, Any]:
             slot.update(fresh)
             return fresh
     except requests.exceptions.RequestException:
-        # Silent; keep cached state. Connection health is checked elsewhere.
         pass
     return {
         "status": cached.get("status", "unknown"),
@@ -268,11 +293,7 @@ def refresh_video_status(video_id: str) -> dict[str, Any]:
 
 
 def send_chat(video_id: str, query: str, domain_context: Optional[str]) -> Optional[dict[str, Any]]:
-    payload = {
-        "session_id": st.session_state.session_id,
-        "video_id": video_id,
-        "query": query,
-    }
+    payload = {"session_id": st.session_state.session_id, "video_id": video_id, "query": query}
     if domain_context:
         payload["domain_context"] = domain_context
     try:
@@ -282,9 +303,8 @@ def send_chat(video_id: str, query: str, domain_context: Optional[str]) -> Optio
         return {"_error": f"Backend returned {r.status_code}", "_detail": r.text[:400]}
     except requests.exceptions.Timeout:
         return {"_error": "timeout", "_detail": (
-            "The first query with a new domain context can take 30–60 s while "
-            "Pixeltable builds that view. Try the same query again — it'll hit "
-            "the cache and return in a couple of seconds."
+            "First query with a new domain context can take 30–60 s while "
+            "Pixeltable builds that view. Try again — it'll hit the cache next time."
         )}
     except requests.exceptions.ConnectionError:
         return {"_error": "connection", "_detail": f"Can't reach backend at {API_BASE_URL}."}
@@ -309,8 +329,12 @@ def reprocess_video(video_id: str, domain_context: Optional[str]) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Small helpers
+# Helpers
 # ---------------------------------------------------------------------------
+
+# Matches [M:SS] / (M:SS) / [M:SS.f] — same regex as the backend's grounding.
+_TIMESTAMP_RE = re.compile(r"[\[\(](\d+):(\d{2})(?:\.\d+)?[\]\)]")
+
 
 def fmt_timestamp(seconds: float) -> str:
     seconds = max(0.0, float(seconds))
@@ -318,22 +342,110 @@ def fmt_timestamp(seconds: float) -> str:
     return f"{m}:{s:02d}"
 
 
-def has_custom_domain() -> bool:
-    ctx = (st.session_state.domain_context or "").strip()
-    return bool(ctx) and ctx.lower() != "general video analysis"
+def prepare_answer_for_markdown(raw: str) -> str:
+    """Replace ``[M:SS]`` / ``(M:SS)`` with styled chips before we hand the text
+    to ``st.markdown``.
+
+    Why: Streamlit's markdown parser interprets back-to-back bracket pairs
+    (``[0:13][0:10]``) as reference-style link syntax and eats them. That's
+    the "Ungrounded" false-positive the user saw — the raw answer *did*
+    contain ``[M:SS]`` tokens (grounding detection ran on the raw text and
+    returned True server-side), but the rendered answer dropped them.
+
+    Wrapping each timestamp in a span with ``unsafe_allow_html`` sidesteps the
+    bracket-parsing ambiguity and also makes the timestamps visually stand out.
+    """
+    if not raw:
+        return ""
+
+    def _chip(match: re.Match) -> str:
+        m, s = match.group(1), match.group(2)
+        return f"<span class='ts-chip'>{m}:{s}</span>"
+
+    return _TIMESTAMP_RE.sub(_chip, raw)
 
 
-def effective_domain_context() -> Optional[str]:
-    return st.session_state.domain_context.strip() or None if has_custom_domain() else None
+def get_current_domain_context(video_id: str) -> Optional[str]:
+    """Per-video domain lens. Empty string / 'General video analysis' → None."""
+    info = st.session_state.uploaded_videos.get(video_id) or {}
+    ctx = (info.get("domain_context") or "").strip()
+    if not ctx or ctx.lower() == "general video analysis":
+        return None
+    return ctx
 
 
 def video_is_ready(indexes: list[str]) -> bool:
-    """Ready once the three eager indexes exist. DOMAIN is lazy — never required."""
     return all(idx in indexes for idx in EAGER_INDEXES)
 
 
+def _truncate(s: str, n: int) -> str:
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
 # ---------------------------------------------------------------------------
-# UI: header
+# Upload dialog (st.dialog — modal that ChatGPT-style "New video" opens)
+# ---------------------------------------------------------------------------
+
+@st.dialog("Upload a new video", width="large")
+def upload_dialog() -> None:
+    st.markdown("#### 1 · Choose a domain lens *(optional)*")
+    st.caption(
+        "The lens becomes the context for the dedicated domain index — e.g. "
+        "pick *“cooking techniques”* for a recipe video or *“luxury travel "
+        "marketing”* for a hotel ad. You can always skip it and chat generically."
+    )
+    domain = st.text_input(
+        "Domain context",
+        placeholder="e.g. cooking techniques, luxury travel marketing",
+        key="dlg_domain_input",
+        label_visibility="collapsed",
+    )
+
+    st.divider()
+    st.markdown("#### 2 · Select an MP4")
+    file = st.file_uploader(
+        "MP4 file",
+        type=["mp4"],
+        help="Up to 500 MB, ≤ 2 hours.",
+        key="dlg_file_uploader",
+        label_visibility="collapsed",
+    )
+    if file:
+        st.caption(f"**{file.name}** · {file.size / 1e6:.1f} MB")
+
+    st.divider()
+    cols = st.columns([2, 1])
+    with cols[0]:
+        start = st.button(
+            "🚀 Upload & index",
+            type="primary",
+            use_container_width=True,
+            disabled=not file,
+        )
+    with cols[1]:
+        if st.button("Cancel", use_container_width=True):
+            st.rerun()
+
+    if start and file:
+        with st.spinner("Uploading…"):
+            resp = upload_video(file, domain.strip() or None)
+        if resp:
+            vid = resp["video_id"]
+            st.session_state.uploaded_videos[vid] = {
+                "filename": file.name,
+                "upload_time": datetime.now().isoformat(),
+                "status": "processing",
+                "indexes": [],
+                "index_errors": {},
+                "domain_context": domain.strip() or "",
+            }
+            st.session_state.chat_history.setdefault(vid, [])
+            st.session_state.active_video_id = vid
+            st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Header
 # ---------------------------------------------------------------------------
 
 def render_header() -> None:
@@ -355,33 +467,38 @@ def render_header() -> None:
 
 
 # ---------------------------------------------------------------------------
-# UI: sidebar
+# Sidebar — "New video" button at top, then the video list
 # ---------------------------------------------------------------------------
 
 def render_sidebar() -> None:
-    st.markdown("### Videos")
+    # "New video" button — styled like ChatGPT's "New chat".
+    if st.button("➕ New video", use_container_width=True, type="primary"):
+        upload_dialog()
 
+    st.markdown("")  # spacer
+
+    st.markdown("### Videos")
     videos = st.session_state.uploaded_videos
     if not videos:
-        st.caption("No videos yet. Upload one on the right.")
+        st.caption("No videos yet. Click “New video” to upload one.")
     else:
         for video_id, info in list(videos.items()):
             fresh = refresh_video_status(video_id)
             info.update(fresh)
             _sidebar_video_entry(video_id, info)
 
-        st.divider()
-        if st.button("🧹 Clear session", use_container_width=True,
-                     help="Forget uploaded videos + chat in this browser. Backend data stays."):
-            st.session_state.uploaded_videos = {}
-            st.session_state.active_video_id = None
-            st.session_state.chat_history = []
-            st.session_state.last_status_poll = {}
-            st.rerun()
-
     st.divider()
-    _sidebar_domain_panel()
-    _sidebar_footer()
+    if st.button("🧹 Clear session", use_container_width=True,
+                 help="Forget uploaded videos + chat in this browser. Backend data stays."):
+        st.session_state.uploaded_videos = {}
+        st.session_state.active_video_id = None
+        st.session_state.chat_history = {}
+        st.session_state.last_status_poll = {}
+        st.rerun()
+
+    st.markdown("### Session")
+    st.caption(f"ID: `{st.session_state.session_id[:8]}`")
+    st.caption(f"Backend: `{API_BASE_URL}`")
 
 
 def _sidebar_video_entry(video_id: str, info: dict[str, Any]) -> None:
@@ -389,7 +506,6 @@ def _sidebar_video_entry(video_id: str, info: dict[str, Any]) -> None:
     indexes = info.get("indexes", [])
     is_active = video_id == st.session_state.active_video_id
     name = info.get("filename", video_id[:8])
-
     ready = video_is_ready(indexes) or status == "completed"
 
     if status == "failed":
@@ -403,7 +519,7 @@ def _sidebar_video_entry(video_id: str, info: dict[str, Any]) -> None:
 
     with st.container(border=True):
         st.markdown(
-            f"**{'⭐ ' if is_active else ''}{_truncate(name, 34)}**  \n"
+            f"**{'⭐ ' if is_active else ''}{_truncate(name, 32)}**  \n"
             f"<span style='color:#64748b;font-size:0.82rem'>{status_line}</span>",
             unsafe_allow_html=True,
         )
@@ -411,61 +527,20 @@ def _sidebar_video_entry(video_id: str, info: dict[str, Any]) -> None:
         with cols[0]:
             if st.button("Open", key=f"open_{video_id}", use_container_width=True, disabled=is_active):
                 st.session_state.active_video_id = video_id
+                st.session_state.chat_history.setdefault(video_id, [])
                 st.rerun()
         with cols[1]:
-            if status == "processing":
-                if st.button("↻ Refresh", key=f"refresh_{video_id}", use_container_width=True):
-                    st.session_state.last_status_poll.pop(video_id, None)
+            if st.button("Reprocess", key=f"rep_{video_id}", use_container_width=True,
+                         help="Retry the backend indexing pipeline on this video"):
+                if reprocess_video(video_id, info.get("domain_context") or None):
+                    st.session_state.uploaded_videos[video_id]["status"] = "processing"
                     st.rerun()
-            else:
-                if st.button("Reprocess", key=f"rep_{video_id}", use_container_width=True):
-                    if reprocess_video(video_id, effective_domain_context()):
-                        st.session_state.uploaded_videos[video_id]["status"] = "processing"
-                        st.rerun()
-                    else:
-                        st.error("Reprocess failed.")
-
-
-def _sidebar_domain_panel() -> None:
-    st.markdown("### Domain context")
-    if has_custom_domain():
-        st.markdown(
-            f"<div style='background:#eef2ff;border:1px solid #c7d2fe;padding:0.55rem 0.8rem;"
-            f"border-radius:8px;color:#3730a3;font-size:0.85rem;line-height:1.45;'>"
-            f"{st.session_state.domain_context}</div>",
-            unsafe_allow_html=True,
-        )
-        st.caption("Queries use this to build a dedicated domain index on first ask.")
-    else:
-        st.caption("Unset — chat uses the general-purpose indexes.")
-
-    with st.expander("✏️ Edit", expanded=False):
-        new_val = st.text_input(
-            "Context",
-            value=st.session_state.domain_context,
-            placeholder="e.g. “luxury travel marketing”, “cooking techniques”",
-            key="domain_input",
-            label_visibility="collapsed",
-        )
-        cols = st.columns(2)
-        with cols[0]:
-            if st.button("Save", use_container_width=True):
-                st.session_state.domain_context = new_val.strip()
-                st.rerun()
-        with cols[1]:
-            if st.button("Clear", use_container_width=True, disabled=not st.session_state.domain_context):
-                st.session_state.domain_context = ""
-                st.rerun()
-
-
-def _sidebar_footer() -> None:
-    st.markdown("### Session")
-    st.caption(f"ID: `{st.session_state.session_id[:8]}`")
-    st.caption(f"Backend: `{API_BASE_URL}`")
+                else:
+                    st.error("Reprocess failed.")
 
 
 # ---------------------------------------------------------------------------
-# UI: empty state (no active video)
+# Empty state
 # ---------------------------------------------------------------------------
 
 def render_empty_state() -> None:
@@ -477,41 +552,11 @@ def render_empty_state() -> None:
         "</p>",
         unsafe_allow_html=True,
     )
-    _upload_widget()
-
-
-def _upload_widget() -> None:
-    with st.container(border=True):
-        uploaded_file = st.file_uploader(
-            "Upload a video file",
-            type=["mp4"],
-            help="MP4 only, up to 500 MB, ≤ 2 hours.",
-            key="uploader",
-        )
-        cols = st.columns([3, 2])
-        with cols[0]:
-            if uploaded_file:
-                st.caption(f"**{uploaded_file.name}** · {uploaded_file.size / 1e6:.1f} MB")
-        with cols[1]:
-            if uploaded_file and st.button("Upload & index", type="primary", use_container_width=True):
-                with st.spinner("Uploading…"):
-                    resp = upload_video(uploaded_file)
-                if resp:
-                    vid = resp["video_id"]
-                    st.session_state.uploaded_videos[vid] = {
-                        "filename": uploaded_file.name,
-                        "upload_time": datetime.now().isoformat(),
-                        "status": "processing",
-                        "indexes": [],
-                        "index_errors": {},
-                    }
-                    st.session_state.active_video_id = vid
-                    st.success("Upload complete — indexing in background.")
-                    st.rerun()
+    st.info("👈 Click **➕ New video** in the sidebar to get started.")
 
 
 # ---------------------------------------------------------------------------
-# UI: active video + chat
+# Active video — processing (fragment auto-polls) OR chat
 # ---------------------------------------------------------------------------
 
 def render_active_video() -> None:
@@ -522,61 +567,55 @@ def render_active_video() -> None:
         st.rerun()
         return
 
-    fresh = refresh_video_status(video_id)
-    info.update(fresh)
+    _render_video_header(video_id, info)
 
+    # Decide processing vs chat view. Re-check status once on entry (cheap).
+    fresh = refresh_video_status(video_id, force=False)
+    info.update(fresh)
     status = info.get("status", "unknown")
     indexes = info.get("indexes", [])
-    index_errors = info.get("index_errors", {})
     ready = video_is_ready(indexes) or status == "completed"
-
-    # --- header strip ---
-    st.markdown(f"### {info.get('filename', video_id[:8])}")
-    _render_index_pills(indexes, index_errors)
-    st.caption(f"`{video_id}`")
-
-    if not ready and status == "processing":
-        with st.status("Processing video…", expanded=True) as s:
-            st.write("Transcoding + frame sampling + CLIP embeddings")
-            st.write("Whisper transcription + text-embedding index")
-            st.write("Frame descriptions via vision LLM + embedding index")
-            st.caption("A 20-second clip typically finishes in ~30 s. Longer videos scale roughly linearly.")
-            if st.button("↻ Check now"):
-                st.session_state.last_status_poll.pop(video_id, None)
-                st.rerun()
-        return
 
     if status == "failed":
         st.error(f"Processing failed: {info.get('error') or 'unknown error'}")
         if st.button("Try reprocess"):
-            if reprocess_video(video_id, effective_domain_context()):
+            if reprocess_video(video_id, info.get("domain_context") or None):
                 st.session_state.uploaded_videos[video_id]["status"] = "processing"
                 st.rerun()
         return
 
-    # Real per-eager-index errors → show, but don't cry about DOMAIN missing.
+    if not ready:
+        _render_processing_fragment(video_id)
+        return
+
+    # Surface real per-eager-index errors if any. DOMAIN missing ≠ failure.
+    index_errors = info.get("index_errors", {})
     real_errors = {k: v for k, v in index_errors.items() if k.upper() in EAGER_INDEXES}
     if real_errors:
         with st.expander(f"⚠️ {len(real_errors)} index error(s)", expanded=False):
             for k, v in real_errors.items():
                 st.error(f"**{k}**: {v}")
             if st.button("Reprocess failed indexes"):
-                if reprocess_video(video_id, effective_domain_context()):
+                if reprocess_video(video_id, info.get("domain_context") or None):
                     st.session_state.uploaded_videos[video_id]["status"] = "processing"
                     st.rerun()
 
     st.divider()
-    _render_chat_panel(video_id)
+    _render_chat(video_id)
 
 
-def _render_index_pills(indexes: list[str], index_errors: dict[str, str]) -> None:
-    """Render index badges. DOMAIN is always 'lazy' unless already built.
+def _render_video_header(video_id: str, info: dict[str, Any]) -> None:
+    st.markdown(f"### {info.get('filename', video_id[:8])}")
+    _render_index_pills(info.get("indexes", []), info.get("index_errors", {}),
+                        has_domain=bool(info.get("domain_context")))
+    meta_bits = [f"`{video_id}`"]
+    if info.get("domain_context"):
+        meta_bits.append(f"lens: *{info['domain_context']}*")
+    st.caption(" · ".join(meta_bits))
 
-    Previously: if DOMAIN wasn't in `indexes`, the UI warned "DOMAIN failed."
-    Post-Step-8 that's wrong — DOMAIN builds on first chat with a
-    domain_context, so "not present at upload" is expected, not failed.
-    """
-    pills_html: list[str] = []
+
+def _render_index_pills(indexes: list[str], index_errors: dict[str, str], has_domain: bool) -> None:
+    pills: list[str] = []
     for name in EAGER_INDEXES:
         if name in indexes:
             css = "idx-on"
@@ -584,30 +623,61 @@ def _render_index_pills(indexes: list[str], index_errors: dict[str, str]) -> Non
             css = "idx-off"
         else:
             css = "idx-lazy"
-        pills_html.append(f"<span class='idx-pill {css}'>{name}</span>")
-
-    # Domain — render state separately and honestly.
+        pills.append(f"<span class='idx-pill {css}'>{name}</span>")
     if "DOMAIN" in indexes:
-        pills_html.append("<span class='idx-pill idx-on'>DOMAIN</span>")
-    elif has_custom_domain():
-        pills_html.append("<span class='idx-pill idx-lazy'>DOMAIN · on first query</span>")
+        pills.append("<span class='idx-pill idx-on'>DOMAIN</span>")
+    elif has_domain:
+        pills.append("<span class='idx-pill idx-lazy'>DOMAIN · on first query</span>")
     else:
-        pills_html.append("<span class='idx-pill idx-lazy'>DOMAIN · off</span>")
+        pills.append("<span class='idx-pill idx-lazy'>DOMAIN · off</span>")
+    st.markdown(" ".join(pills), unsafe_allow_html=True)
 
-    st.markdown(" ".join(pills_html), unsafe_allow_html=True)
+
+@st.fragment(run_every=AUTO_POLL_EVERY_SEC)
+def _render_processing_fragment(video_id: str) -> None:
+    """Auto-polling processing view. Streamlit re-executes this fragment every
+    ``AUTO_POLL_EVERY_SEC`` seconds without a full app rerun, so the user doesn't
+    have to click "Refresh". When the eager indexes flip to ready we escalate to
+    an app-level rerun so the outer layout switches to the chat view."""
+    fresh = refresh_video_status(video_id, force=True)
+    info = st.session_state.uploaded_videos.setdefault(video_id, {})
+    info.update(fresh)
+    status = fresh["status"]
+    indexes = fresh["indexes"]
+
+    if status == "failed":
+        st.rerun(scope="app")
+
+    if video_is_ready(indexes) or status == "completed":
+        st.toast("✅ Processing complete", icon="🎉")
+        st.rerun(scope="app")
+
+    with st.status("Processing video…", expanded=True):
+        st.write("Transcoding + frame sampling + CLIP embeddings")
+        st.write("Whisper transcription + text embedding index")
+        st.write("Frame descriptions via vision LLM + embedding index")
+        st.caption(
+            f"A 20-second clip typically finishes in ~30 s. Auto-checking every "
+            f"{int(AUTO_POLL_EVERY_SEC)} seconds; no need to click anything."
+        )
+        done = [i for i in indexes if i in EAGER_INDEXES]
+        st.progress(len(done) / max(1, len(EAGER_INDEXES)), text=f"{len(done)}/{len(EAGER_INDEXES)} indexes built")
 
 
-def _render_chat_panel(video_id: str) -> None:
-    """Chat messages + input. Uses Streamlit's native st.chat_* widgets."""
+def _render_chat(video_id: str) -> None:
+    info = st.session_state.uploaded_videos.get(video_id, {})
+    history = st.session_state.chat_history.setdefault(video_id, [])
+
     cols = st.columns([6, 1])
     with cols[0]:
         st.markdown("#### Chat")
     with cols[1]:
-        if st.button("Clear", use_container_width=True, help="Clear chat history (local)"):
-            st.session_state.chat_history = []
+        if st.button("Clear chat", use_container_width=True, key=f"clear_chat_{video_id}",
+                     help="Clear this video's chat history (local only)"):
+            st.session_state.chat_history[video_id] = []
             st.rerun()
 
-    for msg in st.session_state.chat_history:
+    for msg in history:
         role = msg["role"]
         with st.chat_message(role):
             if role == "assistant" and msg.get("grounded") is False:
@@ -615,39 +685,40 @@ def _render_chat_panel(video_id: str) -> None:
                     "<div class='ungrounded-note'>Ungrounded · the model didn't cite specific timestamps</div>",
                     unsafe_allow_html=True,
                 )
-            st.markdown(msg["content"])
+            # Render answer with timestamp-chip substitution so markdown doesn't
+            # eat [0:13][0:10] as reference-link syntax.
+            if role == "assistant":
+                st.markdown(prepare_answer_for_markdown(msg["content"]), unsafe_allow_html=True)
+            else:
+                st.markdown(msg["content"])
             cites = msg.get("citations") or []
             if cites:
                 with st.expander(f"Citations ({len(cites)})", expanded=False):
                     for c in cites:
                         _render_citation(c)
 
+    # Input
+    domain = get_current_domain_context(video_id)
     placeholder = "Ask about the video…"
-    if has_custom_domain():
-        placeholder = f"Ask about the video (lens: {st.session_state.domain_context})…"
-
+    if domain:
+        placeholder = f"Ask about the video (lens: {domain})…"
     query = st.chat_input(placeholder)
     if not query:
         return
 
-    st.session_state.chat_history.append({"role": "user", "content": query})
-    domain = effective_domain_context()
+    history.append({"role": "user", "content": query})
     spinner_msg = "Thinking…"
     if domain and not _has_domain_been_built(video_id, domain):
         spinner_msg = "Building the domain view (30–60 s on first query)…"
-
     with st.spinner(spinner_msg):
         resp = send_chat(video_id, query, domain)
-
     if not resp:
         return
 
     if "_error" in resp:
         err = resp["_error"]
         detail = resp.get("_detail", "")
-        if err == "timeout" and domain:
-            _note_domain_build_attempt(video_id, domain)
-        st.session_state.chat_history.append({
+        history.append({
             "role": "assistant",
             "content": f"⚠️ **{err}** — {detail}",
             "grounded": None,
@@ -655,7 +726,7 @@ def _render_chat_panel(video_id: str) -> None:
     else:
         if domain:
             _note_domain_build_attempt(video_id, domain, succeeded=True)
-        st.session_state.chat_history.append({
+        history.append({
             "role": "assistant",
             "content": resp.get("answer", "(no answer)"),
             "citations": resp.get("citations", []),
@@ -671,20 +742,21 @@ def _render_citation(c: dict[str, Any]) -> None:
     content = str(c.get("content", "")).strip().replace("\n", " ")
     if len(content) > 320:
         content = content[:317] + "…"
+    # Escape any HTML chars in retrieved content so we don't inject user data.
+    import html as _html
+    safe = _html.escape(content)
     st.markdown(
         f"<div class='citation-card'>"
         f"<div class='citation-meta'><span class='src'>{src}</span> "
         f"@ {ts} · similarity {sim:.2f}</div>"
-        f"{content}"
+        f"{safe}"
         f"</div>",
         unsafe_allow_html=True,
     )
 
 
 # ---------------------------------------------------------------------------
-# Lightweight tracking of which (video, domain) pairs we've already tried.
-# Not authoritative — the backend is the source of truth — just so we can
-# pick better spinner text on the first domain-aware query.
+# Small stateful helpers for "has the domain view been built this session"
 # ---------------------------------------------------------------------------
 
 def _has_domain_been_built(video_id: str, domain: str) -> bool:
@@ -697,14 +769,6 @@ def _note_domain_build_attempt(video_id: str, domain: str, succeeded: bool = Fal
     seen = slot.setdefault("domain_attempts", set())
     if succeeded or domain in seen:
         seen.add(domain)
-
-
-# ---------------------------------------------------------------------------
-# Utilities
-# ---------------------------------------------------------------------------
-
-def _truncate(s: str, n: int) -> str:
-    return s if len(s) <= n else s[: n - 1] + "…"
 
 
 # ---------------------------------------------------------------------------
@@ -723,11 +787,6 @@ def main() -> None:
         render_empty_state()
     else:
         render_active_video()
-
-    # Bottom: tiny upload affordance when a video is already active.
-    if st.session_state.active_video_id:
-        with st.expander("➕ Upload another video"):
-            _upload_widget()
 
     st.markdown("<div class='app-footer'>QuadRAG · four-index multimodal RAG for video</div>", unsafe_allow_html=True)
 
