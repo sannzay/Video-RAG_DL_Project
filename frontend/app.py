@@ -175,6 +175,26 @@ _CSS = """
 # Session state
 # ---------------------------------------------------------------------------
 
+def _empty_flow() -> dict[str, Any]:
+    """Shape for the in-chat new-video wizard state machine.
+
+    Lives in ``st.session_state.new_video_flow``. ``conversation`` is a list of
+    ``{role, content}`` dicts that migrates into the video's chat history once
+    indexing completes.
+    """
+    return {
+        "active": False,
+        "step": None,  # "await_file" | "await_domain" | "await_confirm" | "uploading" | "processing" | "failed"
+        "file_name": None,
+        "file_bytes": None,
+        "file_size": 0,
+        "domain": None,  # str or None; "" means explicitly skipped
+        "video_id": None,
+        "error": None,
+        "conversation": [],
+    }
+
+
 def _init_state() -> None:
     defaults = {
         "session_id": str(uuid.uuid4()),
@@ -186,6 +206,7 @@ def _init_state() -> None:
         "connection_ok": True,
         "connection_msg": "",
         "connection_fail_streak": 0,
+        "new_video_flow": _empty_flow(),
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
@@ -229,7 +250,13 @@ def check_backend(force: bool = False) -> ConnectionState:
     return ConnectionState(st.session_state.connection_ok, st.session_state.connection_msg)
 
 
-def upload_video(file, domain_context: Optional[str]) -> Optional[dict[str, Any]]:
+def upload_video(filename: str, data_bytes: bytes, domain_context: Optional[str]) -> Optional[dict[str, Any]]:
+    """POST /upload-video with raw bytes + filename.
+
+    Takes raw bytes (not a Streamlit UploadedFile) so the wizard can keep the
+    file in ``session_state`` across reruns — the UploadedFile handle is only
+    live during the rerun where the uploader widget produced it.
+    """
     data = {}
     if domain_context:
         data["domain_context"] = domain_context
@@ -237,7 +264,7 @@ def upload_video(file, domain_context: Optional[str]) -> Optional[dict[str, Any]
     try:
         r = requests.post(
             _api_url("/upload-video"),
-            files={"file": (file.name, file.getvalue())},
+            files={"file": (filename, data_bytes)},
             data=data,
             timeout=UPLOAD_TIMEOUT_SEC,
         )
@@ -383,65 +410,323 @@ def _truncate(s: str, n: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Upload dialog (st.dialog — modal that ChatGPT-style "New video" opens)
+# In-chat new-video wizard
+#
+# Flow (each step renders its widget inside a chat_message so it feels like the
+# bot is walking the user through setup):
+#
+#   await_file    → bot: "Upload an MP4"  + [file_uploader]
+#   await_domain  → bot: "Pick a lens"    + preset chips + custom input + skip
+#   await_confirm → bot: "Ready to go?"   + [Start] [Change lens]
+#   processing    → bot: "Indexing..."    + auto-polling progress (fragment)
+#   (on completion) conversation migrates into chat_history[video_id] and the
+#   wizard clears itself; the main dispatch falls through to the regular chat
+#   view with the wizard transcript as the chat's opening exchange.
+#
+# The entire wizard disables ``st.chat_input`` so the user can't send real
+# chat queries until the video is indexed.
 # ---------------------------------------------------------------------------
 
-@st.dialog("Upload a new video", width="large")
-def upload_dialog() -> None:
-    st.markdown("#### 1 · Choose a domain lens *(optional)*")
-    st.caption(
-        "The lens becomes the context for the dedicated domain index — e.g. "
-        "pick *“cooking techniques”* for a recipe video or *“luxury travel "
-        "marketing”* for a hotel ad. You can always skip it and chat generically."
-    )
-    domain = st.text_input(
-        "Domain context",
-        placeholder="e.g. cooking techniques, luxury travel marketing",
-        key="dlg_domain_input",
-        label_visibility="collapsed",
+DOMAIN_PRESETS: list[tuple[str, str]] = [
+    ("😊 Emotions", "emotions, mood, and atmosphere of people and scenes"),
+    ("🎬 Actions", "key actions and events happening in the scene"),
+    ("📢 Marketing", "marketing angles, selling points, and branding"),
+    ("📚 Educational", "educational concepts, key takeaways, and learning points"),
+    ("🎭 Storytelling", "narrative structure, storytelling, and character development"),
+    ("🏞️ Travel", "travel destinations, locations, and atmosphere"),
+]
+
+
+def start_new_video_flow() -> None:
+    """Sidebar 'New video' entry point — resets the wizard and routes the main
+    area to it on the next rerun."""
+    st.session_state.new_video_flow = _empty_flow()
+    flow = st.session_state.new_video_flow
+    flow["active"] = True
+    flow["step"] = "await_file"
+    flow["conversation"] = [{
+        "role": "assistant",
+        "content": "Let's set up a new video! First, upload an MP4 file below.",
+    }]
+    st.session_state.active_video_id = None
+    st.rerun()
+
+
+def cancel_new_video_flow() -> None:
+    st.session_state.new_video_flow = _empty_flow()
+    st.rerun()
+
+
+def _advance_to_domain(chosen_label: str, chosen_value: str) -> None:
+    flow = st.session_state.new_video_flow
+    flow["domain"] = chosen_value
+    display = chosen_label if not chosen_value else f"{chosen_label} (“{chosen_value}”)"
+    if chosen_label == "⏭️ Skip" and not chosen_value:
+        display = "⏭️ *(skip — no domain lens)*"
+    flow["conversation"].append({"role": "user", "content": display})
+    flow["conversation"].append({
+        "role": "assistant",
+        "content": _confirm_message(flow),
+    })
+    flow["step"] = "await_confirm"
+    st.rerun()
+
+
+def _go_back_to_domain() -> None:
+    flow = st.session_state.new_video_flow
+    flow["domain"] = None
+    # Trim the confirm + previous user-choice messages from the transcript.
+    while flow["conversation"] and flow["conversation"][-1]["role"] != "assistant" or \
+          (flow["conversation"] and flow["conversation"][-1].get("content", "").startswith("Ready")):
+        popped = flow["conversation"].pop()
+        if popped["role"] == "user":
+            break
+    flow["conversation"].append({
+        "role": "assistant",
+        "content": "No problem — pick a different domain lens, or skip.",
+    })
+    flow["step"] = "await_domain"
+    st.rerun()
+
+
+def _confirm_message(flow: dict[str, Any]) -> str:
+    lens_desc = "*no domain lens*" if not flow["domain"] else f"lens **“{flow['domain']}”**"
+    size_mb = (flow["file_size"] or 0) / 1e6
+    return (
+        f"Ready to go? I'll process **{flow['file_name']}** ({size_mb:.1f} MB) with "
+        f"{lens_desc}. Hit **Start indexing** below when you're ready."
     )
 
-    st.divider()
-    st.markdown("#### 2 · Select an MP4")
-    file = st.file_uploader(
-        "MP4 file",
-        type=["mp4"],
-        help="Up to 500 MB, ≤ 2 hours.",
-        key="dlg_file_uploader",
-        label_visibility="collapsed",
-    )
-    if file:
-        st.caption(f"**{file.name}** · {file.size / 1e6:.1f} MB")
 
-    st.divider()
-    cols = st.columns([2, 1])
-    with cols[0]:
-        start = st.button(
-            "🚀 Upload & index",
-            type="primary",
-            use_container_width=True,
-            disabled=not file,
+def _start_upload_from_wizard() -> None:
+    flow = st.session_state.new_video_flow
+    if not flow["file_bytes"] or not flow["file_name"]:
+        return
+    flow["step"] = "uploading"
+    resp = upload_video(flow["file_name"], flow["file_bytes"], flow["domain"] or None)
+    if not resp:
+        flow["error"] = "Upload failed"
+        flow["step"] = "await_confirm"
+        flow["conversation"].append({
+            "role": "assistant",
+            "content": "⚠️ Upload failed. You can retry with **Start indexing** or change the lens.",
+        })
+        st.rerun()
+        return
+
+    vid = resp["video_id"]
+    flow["video_id"] = vid
+    flow["step"] = "processing"
+    st.session_state.uploaded_videos[vid] = {
+        "filename": flow["file_name"],
+        "upload_time": datetime.now().isoformat(),
+        "status": "processing",
+        "indexes": [],
+        "index_errors": {},
+        "domain_context": flow["domain"] or "",
+    }
+    st.session_state.chat_history.setdefault(vid, [])
+    st.session_state.active_video_id = vid
+    flow["conversation"].append({
+        "role": "assistant",
+        "content": "⏳ Uploaded. Now indexing — this usually takes 20–60 s. I'll tell you when it's ready.",
+    })
+    st.rerun()
+
+
+def _finalize_wizard_if_ready() -> None:
+    """If the wizard is in the processing step and the backend reports the
+    eager indexes are built, migrate the wizard transcript into the video's
+    chat_history and clear the wizard. Called at the top of the wizard
+    renderer so each auto-poll rerun gets a chance to finalize."""
+    flow = st.session_state.new_video_flow
+    if flow["step"] != "processing" or not flow["video_id"]:
+        return
+
+    fresh = refresh_video_status(flow["video_id"], force=True)
+    info = st.session_state.uploaded_videos.setdefault(flow["video_id"], {})
+    info.update(fresh)
+    status = fresh["status"]
+    indexes = fresh["indexes"]
+
+    ready = video_is_ready(indexes) or status == "completed"
+    if status == "failed":
+        flow["conversation"].append({
+            "role": "assistant",
+            "content": "❌ Indexing failed. You can try again from the sidebar (**Reprocess**).",
+        })
+    elif ready:
+        flow["conversation"].append({
+            "role": "assistant",
+            "content": f"✅ Indexing complete — ask me anything about **{flow['file_name']}**!",
+        })
+
+    if status == "failed" or ready:
+        # Migrate wizard transcript into this video's chat history so it
+        # becomes the opening of the chat, then clear the wizard.
+        st.session_state.chat_history[flow["video_id"]] = list(flow["conversation"])
+        st.session_state.new_video_flow = _empty_flow()
+        st.toast("Video ready", icon="🎉")
+        st.rerun()
+
+
+def render_new_video_wizard() -> None:
+    flow = st.session_state.new_video_flow
+
+    # If we're in processing, check for completion on every render (this
+    # function runs both on normal reruns and on the 5-second fragment tick).
+    _finalize_wizard_if_ready()
+
+    # Committed conversation so far
+    for msg in flow["conversation"]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    step = flow["step"]
+
+    if step == "await_file":
+        _render_step_await_file()
+    elif step == "await_domain":
+        _render_step_await_domain()
+    elif step == "await_confirm":
+        _render_step_await_confirm()
+    elif step == "uploading":
+        with st.chat_message("assistant"):
+            st.markdown("Uploading…")
+            st.progress(0.1, text="Sending file to backend")
+    elif step == "processing":
+        _render_step_processing()
+
+    # Always-disabled chat input during the wizard. When the wizard finishes,
+    # control flows back to render_active_video which renders its own enabled
+    # chat_input.
+    st.chat_input(
+        "Finish the setup above to start chatting…",
+        disabled=True,
+        key=f"wiz_disabled_input_{flow.get('video_id', 'pre')}",
+    )
+
+    # Small "Cancel" escape hatch, placed below the chat_input via the
+    # sidebar — see render_sidebar's "Cancel setup" button.
+
+
+def _render_step_await_file() -> None:
+    flow = st.session_state.new_video_flow
+    with st.chat_message("assistant"):
+        file = st.file_uploader(
+            "Select MP4",
+            type=["mp4"],
+            key="wiz_file_uploader",
+            label_visibility="collapsed",
+            help="Up to 500 MB, ≤ 2 hours.",
         )
-    with cols[1]:
-        if st.button("Cancel", use_container_width=True):
+        if file is not None:
+            # Capture bytes immediately — UploadedFile is only live this rerun.
+            flow["file_name"] = file.name
+            flow["file_size"] = file.size
+            flow["file_bytes"] = file.getvalue()
+            flow["conversation"].append({
+                "role": "user",
+                "content": f"📹 **{file.name}** · {file.size / 1e6:.1f} MB",
+            })
+            flow["conversation"].append({
+                "role": "assistant",
+                "content": (
+                    "Great! Now pick a **domain lens** — it shapes how the model "
+                    "captions each frame during indexing. Quick picks below, "
+                    "or type your own / skip."
+                ),
+            })
+            flow["step"] = "await_domain"
             st.rerun()
 
-    if start and file:
-        with st.spinner("Uploading…"):
-            resp = upload_video(file, domain.strip() or None)
-        if resp:
-            vid = resp["video_id"]
-            st.session_state.uploaded_videos[vid] = {
-                "filename": file.name,
-                "upload_time": datetime.now().isoformat(),
-                "status": "processing",
-                "indexes": [],
-                "index_errors": {},
-                "domain_context": domain.strip() or "",
-            }
-            st.session_state.chat_history.setdefault(vid, [])
-            st.session_state.active_video_id = vid
-            st.rerun()
+
+def _render_step_await_domain() -> None:
+    with st.chat_message("assistant"):
+        st.caption("Quick picks")
+        # Render 6 presets in a 3×2 grid.
+        for row_start in range(0, len(DOMAIN_PRESETS), 3):
+            cols = st.columns(3)
+            for offset in range(3):
+                idx = row_start + offset
+                if idx >= len(DOMAIN_PRESETS):
+                    break
+                label, value = DOMAIN_PRESETS[idx]
+                if cols[offset].button(label, key=f"wiz_preset_{idx}", use_container_width=True):
+                    _advance_to_domain(label, value)
+
+        st.markdown("")
+        st.caption("Or type your own lens")
+        custom_cols = st.columns([3, 1])
+        with custom_cols[0]:
+            custom = st.text_input(
+                "Custom lens",
+                key="wiz_custom_domain",
+                placeholder="e.g. cooking techniques, sports analysis",
+                label_visibility="collapsed",
+            )
+        with custom_cols[1]:
+            if st.button("Use", key="wiz_use_custom", use_container_width=True,
+                         disabled=not (custom or "").strip()):
+                _advance_to_domain("✏️ Custom", custom.strip())
+
+        st.markdown("")
+        skip_cols = st.columns([1, 3])
+        with skip_cols[0]:
+            if st.button("⏭️ Skip", key="wiz_skip", use_container_width=True):
+                _advance_to_domain("⏭️ Skip", "")
+
+
+def _render_step_await_confirm() -> None:
+    with st.chat_message("assistant"):
+        cols = st.columns([2, 1])
+        with cols[0]:
+            if st.button("🚀 Start indexing", type="primary", use_container_width=True, key="wiz_start"):
+                _start_upload_from_wizard()
+        with cols[1]:
+            if st.button("↩️ Change lens", use_container_width=True, key="wiz_change_lens"):
+                _go_back_to_domain()
+
+
+@st.fragment(run_every=AUTO_POLL_EVERY_SEC)
+def _render_step_processing() -> None:
+    """Processing view rendered inside a chat_message, wrapped in a fragment
+    so it auto-polls every 5 s without a full-app rerun. Completion handoff
+    happens inside ``_finalize_wizard_if_ready``, called at the top of
+    ``render_new_video_wizard`` (which is itself re-invoked by the fragment)."""
+    flow = st.session_state.new_video_flow
+    video_id = flow.get("video_id")
+    if not video_id:
+        return
+
+    with st.chat_message("assistant"):
+        fresh = refresh_video_status(video_id, force=True)
+        info = st.session_state.uploaded_videos.setdefault(video_id, {})
+        info.update(fresh)
+        done = [i for i in fresh["indexes"] if i in EAGER_INDEXES]
+
+        st.markdown(
+            f"**Processing `{flow['file_name']}`…**  \n"
+            f"<span style='color:#64748b;font-size:0.85rem;'>"
+            f"Auto-checking every {int(AUTO_POLL_EVERY_SEC)} s. You can't send "
+            f"messages until indexing completes.</span>",
+            unsafe_allow_html=True,
+        )
+        st.progress(len(done) / max(1, len(EAGER_INDEXES)),
+                    text=f"{len(done)}/{len(EAGER_INDEXES)} indexes built")
+        if fresh["index_errors"]:
+            for k, v in fresh["index_errors"].items():
+                if k.upper() in EAGER_INDEXES:
+                    st.warning(f"⚠️ **{k}**: {v[:200]}")
+
+        # Finalization is handled up in render_new_video_wizard; this fragment
+        # only RENDERS state. It triggers its own re-run every 5 s via run_every,
+        # but the outer app keeps its state.
+        ready = video_is_ready(fresh["indexes"]) or fresh["status"] == "completed"
+        if ready or fresh["status"] == "failed":
+            # Escalate to app-level rerun so the outer dispatch migrates +
+            # swaps to the real chat view.
+            st.rerun(scope="app")
 
 
 # ---------------------------------------------------------------------------
@@ -471,9 +756,24 @@ def render_header() -> None:
 # ---------------------------------------------------------------------------
 
 def render_sidebar() -> None:
-    # "New video" button — styled like ChatGPT's "New chat".
-    if st.button("➕ New video", use_container_width=True, type="primary"):
-        upload_dialog()
+    flow = st.session_state.new_video_flow
+    wizard_active = flow.get("active", False)
+
+    # "New video" button — styled like ChatGPT's "New chat". Disabled mid-wizard
+    # so the user can't clobber an in-progress setup.
+    if st.button(
+        "➕ New video",
+        use_container_width=True,
+        type="primary",
+        disabled=wizard_active,
+        help=("Start a new video setup" if not wizard_active
+              else "Finish or cancel the current setup first."),
+    ):
+        start_new_video_flow()
+
+    if wizard_active:
+        if st.button("✕ Cancel setup", use_container_width=True):
+            cancel_new_video_flow()
 
     st.markdown("")  # spacer
 
@@ -547,12 +847,14 @@ def render_empty_state() -> None:
     st.markdown("<p class='hero-title'>Ask questions about any video.</p>", unsafe_allow_html=True)
     st.markdown(
         "<p class='hero-sub'>"
-        "Upload an MP4 and QuadRAG indexes it four ways — visual frames, spoken audio, "
-        "AI-generated descriptions, and an optional domain-specific lens. Then chat with it."
+        "QuadRAG indexes each MP4 four ways — visual frames, spoken audio, "
+        "AI-generated descriptions, and an optional domain-specific lens — then "
+        "lets you chat with it. I'll walk you through setup."
         "</p>",
         unsafe_allow_html=True,
     )
-    st.info("👈 Click **➕ New video** in the sidebar to get started.")
+    if st.button("➕ New video", type="primary", use_container_width=False):
+        start_new_video_flow()
 
 
 # ---------------------------------------------------------------------------
@@ -783,7 +1085,10 @@ def main() -> None:
     with st.sidebar:
         render_sidebar()
 
-    if not st.session_state.active_video_id:
+    flow = st.session_state.new_video_flow
+    if flow.get("active"):
+        render_new_video_wizard()
+    elif not st.session_state.active_video_id:
         render_empty_state()
     else:
         render_active_video()
