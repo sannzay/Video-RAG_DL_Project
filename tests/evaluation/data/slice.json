@@ -1,0 +1,1695 @@
+{
+  "seed": 43,
+  "per_bucket": 5,
+  "buckets": [
+    "short",
+    "medium",
+    "long"
+  ],
+  "n_videos": 30,
+  "n_qa": 90,
+  "videos": [
+    {
+      "video_id": "222",
+      "youtube_id": "FlcVBKTSjRs",
+      "duration_bucket": "short",
+      "duration_sec": 52.135813,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/FlcVBKTSjRs.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "183",
+      "youtube_id": "NjxJY7P-Qpo",
+      "duration_bucket": "short",
+      "duration_sec": 81.346,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/NjxJY7P-Qpo.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "153",
+      "youtube_id": "_KU4X06VNiE",
+      "duration_bucket": "short",
+      "duration_sec": 120.604444,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/_KU4X06VNiE.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "267",
+      "youtube_id": "Atf_Af1q_5w",
+      "duration_bucket": "short",
+      "duration_sec": 95.777708,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/Atf_Af1q_5w.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "238",
+      "youtube_id": "NXeHeEHj9Xc",
+      "duration_bucket": "short",
+      "duration_sec": 97.612,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/NXeHeEHj9Xc.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "372",
+      "youtube_id": "phM_SYH6aA0",
+      "duration_bucket": "medium",
+      "duration_sec": 447.919938,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/phM_SYH6aA0.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "530",
+      "youtube_id": "k7iaAhz2md0",
+      "duration_bucket": "medium",
+      "duration_sec": 410.152688,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/k7iaAhz2md0.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "465",
+      "youtube_id": "zW87tVnDKIU",
+      "duration_bucket": "medium",
+      "duration_sec": 769.609,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/zW87tVnDKIU.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "412",
+      "youtube_id": "xr_nln2ZQw8",
+      "duration_bucket": "medium",
+      "duration_sec": 745.971,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/xr_nln2ZQw8.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "510",
+      "youtube_id": "UGMDV82m3Ro",
+      "duration_bucket": "medium",
+      "duration_sec": 304.583,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/UGMDV82m3Ro.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "704",
+      "youtube_id": "HTv4z899xgA",
+      "duration_bucket": "long",
+      "duration_sec": 2859.114854,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/HTv4z899xgA.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "637",
+      "youtube_id": "J5Npf2xJpag",
+      "duration_bucket": "long",
+      "duration_sec": 2117.75975,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/J5Npf2xJpag.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "839",
+      "youtube_id": "azJ5pk5reX0",
+      "duration_bucket": "long",
+      "duration_sec": 3148.2,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/azJ5pk5reX0.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "609",
+      "youtube_id": "HProiNnmGwI",
+      "duration_bucket": "long",
+      "duration_sec": 2830.129,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/HProiNnmGwI.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "766",
+      "youtube_id": "SB4NLADmT_k",
+      "duration_bucket": "long",
+      "duration_sec": 2306.275556,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/SB4NLADmT_k.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "043",
+      "youtube_id": "9jjTGpWmc5U",
+      "duration_bucket": "short",
+      "duration_sec": 113.04175,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/9jjTGpWmc5U.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "234",
+      "youtube_id": "v0m3E_uSyFg",
+      "duration_bucket": "short",
+      "duration_sec": 59.415,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/v0m3E_uSyFg.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "110",
+      "youtube_id": "Qgr4dcsY-60",
+      "duration_bucket": "short",
+      "duration_sec": 72.279,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/Qgr4dcsY-60.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "251",
+      "youtube_id": "1sTQOxXFO44",
+      "duration_bucket": "short",
+      "duration_sec": 81.571701,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/1sTQOxXFO44.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "239",
+      "youtube_id": "VnvG08masio",
+      "duration_bucket": "short",
+      "duration_sec": 109.617,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/VnvG08masio.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "499",
+      "youtube_id": "umfD-K4OTKk",
+      "duration_bucket": "medium",
+      "duration_sec": 267.245,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/umfD-K4OTKk.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "599",
+      "youtube_id": "0JjgoicpYkU",
+      "duration_bucket": "medium",
+      "duration_sec": 706.211701,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/0JjgoicpYkU.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "569",
+      "youtube_id": "VMJEY6uCX3k",
+      "duration_bucket": "medium",
+      "duration_sec": 786.733896,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/VMJEY6uCX3k.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "559",
+      "youtube_id": "wUnEDnAYTpE",
+      "duration_bucket": "medium",
+      "duration_sec": 576.581708,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/wUnEDnAYTpE.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "545",
+      "youtube_id": "ntdzrNKRH4g",
+      "duration_bucket": "medium",
+      "duration_sec": 852.794,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/ntdzrNKRH4g.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "687",
+      "youtube_id": "yGiM3kD12cU",
+      "duration_bucket": "long",
+      "duration_sec": 1901.349771,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/yGiM3kD12cU.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "899",
+      "youtube_id": "f-1xE_5uXDg",
+      "duration_bucket": "long",
+      "duration_sec": 2528.002902,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/f-1xE_5uXDg.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "825",
+      "youtube_id": "wxff_4tDauo",
+      "duration_bucket": "long",
+      "duration_sec": 2326.414,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/wxff_4tDauo.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "838",
+      "youtube_id": "txdfCHpxzVg",
+      "duration_bucket": "long",
+      "duration_sec": 3038.535,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/mp4_files/txdfCHpxzVg.mp4",
+      "n_qa": 3
+    },
+    {
+      "video_id": "739",
+      "youtube_id": "QdHBJ-NiaHM",
+      "duration_bucket": "long",
+      "duration_sec": 1989.741134,
+      "mp4_path": "/Users/sanju/Documents/code/intro/Video_RAG/videorag/QdHBJ-NiaHM.mp4",
+      "n_qa": 3
+    }
+  ],
+  "qa": [
+    {
+      "question_id": "153-1",
+      "video_id": "153",
+      "question": "Referring to ths video, which company sponsored the competition?",
+      "options": [
+        "A. Yahoo.",
+        "B. Google.",
+        "C. Microsoft.",
+        "D. Apple."
+      ],
+      "answer": "A",
+      "task_type": "OCR Problems",
+      "sub_category": "Football",
+      "domain": "Sports Competition",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "153-2",
+      "video_id": "153",
+      "question": "As depicted in the video, what's the last name of the white team wearing number 13?",
+      "options": [
+        "A. Marry.",
+        "B. Lisa.",
+        "C. Lilly.",
+        "D. Karry."
+      ],
+      "answer": "C",
+      "task_type": "OCR Problems",
+      "sub_category": "Football",
+      "domain": "Sports Competition",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "153-3",
+      "video_id": "153",
+      "question": "Which player in the video ends the game?",
+      "options": [
+        "A. White number 13.",
+        "B. White number 16.",
+        "C. Red number 9.",
+        "D. Red number 11."
+      ],
+      "answer": "B",
+      "task_type": "Object Recognition",
+      "sub_category": "Football",
+      "domain": "Sports Competition",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "183-1",
+      "video_id": "183",
+      "question": "How many individuals are shown singing in the video?",
+      "options": [
+        "A. Two men.",
+        "B. Two women.",
+        "C. Three women.",
+        "D. One woman."
+      ],
+      "answer": "B",
+      "task_type": "Counting Problem",
+      "sub_category": "Stage Play",
+      "domain": "Artistic Performance",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "183-2",
+      "video_id": "183",
+      "question": "Which individual does the singer wearing a yellow dress embrace?",
+      "options": [
+        "A. A woman in a suit.",
+        "B. A woman in a dress.",
+        "C. A man with a white hat.",
+        "D. Another singer."
+      ],
+      "answer": "C",
+      "task_type": "Object Recognition",
+      "sub_category": "Stage Play",
+      "domain": "Artistic Performance",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "183-3",
+      "video_id": "183",
+      "question": "Which of the following best describes the audience's reaction to the singer's performance in the video?",
+      "options": [
+        "A. The audience applauded and thought the singer's performance was excellent.",
+        "B. There was no audience at the show because it was a live online broadcast.",
+        "C. The audience covered their faces and wept, thinking that the singer's singing had touched them deeply.",
+        "D. The audience looked very calm.."
+      ],
+      "answer": "A",
+      "task_type": "Object Reasoning",
+      "sub_category": "Stage Play",
+      "domain": "Artistic Performance",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "222-1",
+      "video_id": "222",
+      "question": "How many spoons are used to make the holder in the video?",
+      "options": [
+        "A. 16.",
+        "B. 10.",
+        "C. 6.",
+        "D. 12."
+      ],
+      "answer": "A",
+      "task_type": "Counting Problem",
+      "sub_category": "Handicraft",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "222-2",
+      "video_id": "222",
+      "question": "Which object does the holder made in this video visually resemble?",
+      "options": [
+        "A. Grass.",
+        "B. Animal.",
+        "C. Human's face.",
+        "D. Flower."
+      ],
+      "answer": "D",
+      "task_type": "Object Recognition",
+      "sub_category": "Handicraft",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "222-3",
+      "video_id": "222",
+      "question": "What is the primary focus or main topic of this video?",
+      "options": [
+        "A. Making a toy car with everyday objects.",
+        "B. Learning how to make a spoon candle holder.",
+        "C. Doing fun science experiment using cola.",
+        "D. None of the above."
+      ],
+      "answer": "B",
+      "task_type": "Information Synopsis",
+      "sub_category": "Handicraft",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "238-1",
+      "video_id": "238",
+      "question": "Which of the following best describes the topic of the video?",
+      "options": [
+        "A. How to eat potato chips.",
+        "B. The birth of French fries.",
+        "C. How to make French fries.",
+        "D. The birth of potato chips."
+      ],
+      "answer": "D",
+      "task_type": "Information Synopsis",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "238-2",
+      "video_id": "238",
+      "question": "How do the people in the video eat potato chips?",
+      "options": [
+        "A. Left-handedly.",
+        "B. Right-handedly.",
+        "C. Using both hands.",
+        "D. Using a fork."
+      ],
+      "answer": "C",
+      "task_type": "Action Recognition",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "238-3",
+      "video_id": "238",
+      "question": "Which snack does the main character in the video prefer?",
+      "options": [
+        "A. Potato chips.",
+        "B. French fries.",
+        "C. He likes them both.",
+        "D. He doesn't like either."
+      ],
+      "answer": "A",
+      "task_type": "Action Reasoning",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "267-1",
+      "video_id": "267",
+      "question": "What scenery does the video mainly show?",
+      "options": [
+        "A. Natural scenery.",
+        "B. Cityscape.",
+        "C. Rural scenery.",
+        "D. Architectural scenery."
+      ],
+      "answer": "A",
+      "task_type": "Attribute Perception",
+      "sub_category": "Travel",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "267-2",
+      "video_id": "267",
+      "question": "How many people have their backs to the camera in the sunset scene?",
+      "options": [
+        "A. 0.",
+        "B. 1.",
+        "C. 3.",
+        "D. 2."
+      ],
+      "answer": "D",
+      "task_type": "Counting Problem",
+      "sub_category": "Travel",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "267-3",
+      "video_id": "267",
+      "question": "How many main tourists are shown in the video?",
+      "options": [
+        "A. 3.",
+        "B. 2.",
+        "C. 4.",
+        "D. 5."
+      ],
+      "answer": "B",
+      "task_type": "Counting Problem",
+      "sub_category": "Travel",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "372-1",
+      "video_id": "372",
+      "question": "How does the man demonstrate to do a tuck?",
+      "options": [
+        "A. He jumps up and drives his arms up and pushes off the floor.",
+        "B. He grabs his knees with his hands.",
+        "C. He brings his arms forward and over the head.",
+        "D. He closes his eyes during the jump."
+      ],
+      "answer": "A",
+      "task_type": "Action Recognition",
+      "sub_category": "Life Tip",
+      "domain": "Knowledge",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "372-2",
+      "video_id": "372",
+      "question": "What is the function of the phone display at the end of this video?",
+      "options": [
+        "A. Leading the user to download and install the application.",
+        "B. Showing the services available on the website.",
+        "C. Displaying the advertisements inserted on the web page to advertise the products.",
+        "D. Guiding users to log in to the website and complete the settings."
+      ],
+      "answer": "D",
+      "task_type": "Object Reasoning",
+      "sub_category": "Life Tip",
+      "domain": "Knowledge",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "372-3",
+      "video_id": "372",
+      "question": "What is the trick of evolving backward tuck into a backflip in the video?",
+      "options": [
+        "A. By adding a moment of rotation just before you enter the tuck.",
+        "B. By using the hands less on the mat.",
+        "C. By swinging the arms faster.",
+        "D. By landing with both feet pointed towards the ceiling."
+      ],
+      "answer": "B",
+      "task_type": "Action Recognition",
+      "sub_category": "Life Tip",
+      "domain": "Knowledge",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "412-1",
+      "video_id": "412",
+      "question": "In the video, how does Vit\u00f3ria make money?",
+      "options": [
+        "A. Doing makeup for people in other slums.",
+        "B. Drug trafficking.",
+        "C. Working part-time in a store.",
+        "D. Opening a cosmetics store."
+      ],
+      "answer": "A",
+      "task_type": "Action Recognition",
+      "sub_category": "Documentary",
+      "domain": "Film & Television",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "412-2",
+      "video_id": "412",
+      "question": "Which of the following is NOT a reason why there are many teenage mothers in Brazil every year?",
+      "options": [
+        "A. Abortion is not allowed.",
+        "B. The Brazilian tradition is to have children at a young age.",
+        "C. Lack of sex education.",
+        "D. Contraceptive use is not advocated."
+      ],
+      "answer": "B",
+      "task_type": "Information Synopsis",
+      "sub_category": "Documentary",
+      "domain": "Film & Television",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "412-3",
+      "video_id": "412",
+      "question": "At the end of the video, what kind of attitude is reflected in the interview with the young parents?",
+      "options": [
+        "A. Depressed.",
+        "B. Confused.",
+        "C. Optimistic.",
+        "D. Angry."
+      ],
+      "answer": "C",
+      "task_type": "Attribute Perception",
+      "sub_category": "Documentary",
+      "domain": "Film & Television",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "465-1",
+      "video_id": "465",
+      "question": "What is the name of the second athlete performing the high jump at the beginning of the video?",
+      "options": [
+        "A. MUTAZ ESSA BARSHIM.",
+        "B. DEREK DROUIN.",
+        "C. BOHDAN BONDARENKO.",
+        "D. ERIK KYNARD."
+      ],
+      "answer": "A",
+      "task_type": "OCR Problems",
+      "sub_category": "Athletics",
+      "domain": "Sports Competition",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "465-2",
+      "video_id": "465",
+      "question": "Which athlete in the video was the first to touch off the crossbar?",
+      "options": [
+        "A. Athlete from Russia.",
+        "B. Athlete from Qatar.",
+        "C. Athlete from Canada.",
+        "D. Athlete from Ukraine."
+      ],
+      "answer": "D",
+      "task_type": "Object Recognition",
+      "sub_category": "Athletics",
+      "domain": "Sports Competition",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "465-3",
+      "video_id": "465",
+      "question": "What were the final placings of the three high jumpers recorded in the video?",
+      "options": [
+        "A. Qatari athlete first, Canadian athlete second, Ukrainian athlete third.",
+        "B. Canadian athlete first, Qatari athlete second, Ukrainian athlete third.",
+        "C. Ukrainian athletes first, Canadian athletes second, Qatari athletes third.",
+        "D. Ukrainian athletes first, Qatari athletes second, Canadian athletes third."
+      ],
+      "answer": "B",
+      "task_type": "Temporal Reasoning",
+      "sub_category": "Athletics",
+      "domain": "Sports Competition",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "510-1",
+      "video_id": "510",
+      "question": "What is this video about?",
+      "options": [
+        "A. Parenting.",
+        "B. Home renovation.",
+        "C. Family conflict.",
+        "D. Charity."
+      ],
+      "answer": "B",
+      "task_type": "Information Synopsis",
+      "sub_category": "Variety Show",
+      "domain": "Artistic Performance",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "510-2",
+      "video_id": "510",
+      "question": "In which part of the video does the red parrot appear?",
+      "options": [
+        "A. The parrot does not appear.",
+        "B. End of the video.",
+        "C. Beginning of the video.",
+        "D. Middle of the video."
+      ],
+      "answer": "C",
+      "task_type": "Temporal Perception",
+      "sub_category": "Variety Show",
+      "domain": "Artistic Performance",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "510-3",
+      "video_id": "510",
+      "question": "Based on the video, is the homeowner satisfied with the renovation results?",
+      "options": [
+        "A. Very satisfied.",
+        "B. Unsatisfied.",
+        "C. So-so.",
+        "D. Cannot determine."
+      ],
+      "answer": "A",
+      "task_type": "Attribute Perception",
+      "sub_category": "Variety Show",
+      "domain": "Artistic Performance",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "530-1",
+      "video_id": "530",
+      "question": "Which of the following materials is not used in this video?",
+      "options": [
+        "A. Old CD's.",
+        "B. Glue or liquid silicone.",
+        "C. Satin Ribbon.",
+        "D. Wool threads."
+      ],
+      "answer": "D",
+      "task_type": "Object Recognition",
+      "sub_category": "Handicraft",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "530-2",
+      "video_id": "530",
+      "question": "How many stars can be extracted from one CD?",
+      "options": [
+        "A. 2.",
+        "B. 3.",
+        "C. 4.",
+        "D. 5."
+      ],
+      "answer": "B",
+      "task_type": "Counting Problem",
+      "sub_category": "Handicraft",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "530-3",
+      "video_id": "530",
+      "question": "What is this video mainly about?",
+      "options": [
+        "A. It demonstrates how to clean old CDs.",
+        "B. It shows how to extract audio from old CDs.",
+        "C. It teaches how to make beautiful decorations from old CDs.",
+        "D. It compares several different kinds of CDs."
+      ],
+      "answer": "C",
+      "task_type": "Information Synopsis",
+      "sub_category": "Handicraft",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "609-1",
+      "video_id": "609",
+      "question": "What is the primary focus of the video?",
+      "options": [
+        "A. The Crusades' successive expeditions to the East.",
+        "B. The Fourth Crusade and the Fall of Constantinople.",
+        "C. The First Crusade and the Conquest of Jerusalem.",
+        "D. The foundation of the Kingdom of Jerusalem."
+      ],
+      "answer": "C",
+      "task_type": "Information Synopsis",
+      "sub_category": "Humanity & History",
+      "domain": "Knowledge",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "609-2",
+      "video_id": "609",
+      "question": "Which of the following statements is correct according to the video?",
+      "options": [
+        "A. The Crusaders won the first battle after they landed in Asia Minor.",
+        "B. Pope Gregory waged a campaign against the Muslim world.",
+        "C. The Third Crusade was held to conquer Russia.",
+        "D. The Muslim empires experienced divisions before the Crusade arrived."
+      ],
+      "answer": "D",
+      "task_type": "Attribute Perception",
+      "sub_category": "Humanity & History",
+      "domain": "Knowledge",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "609-3",
+      "video_id": "609",
+      "question": "In line with the video evidence, what happened after the Crusaders conques Antioch?",
+      "options": [
+        "A. They came back to Europe.",
+        "B. They stayed in Constantinople for the rest of the year.",
+        "C. They marched on Constantinople.",
+        "D. They besieged Jerusalem."
+      ],
+      "answer": "D",
+      "task_type": "Temporal Reasoning",
+      "sub_category": "Humanity & History",
+      "domain": "Knowledge",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "637-1",
+      "video_id": "637",
+      "question": "According to the given video, what is the main focus of it?",
+      "options": [
+        "A. A comparison of different investment banking firms and their approaches to risk management and client relationships.",
+        "B. The rise of retail investors and the growing importance of consumer finance in the 21st century.",
+        "C. Highlighting the key leaders, business strategies, and navigation of financial crises of a special history period.",
+        "D. The evolution of financial regulations and their impact on investment banks like Goldman Sachs."
+      ],
+      "answer": "C",
+      "task_type": "Information Synopsis",
+      "sub_category": "Finance & Commerce",
+      "domain": "Knowledge",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "637-2",
+      "video_id": "637",
+      "question": "Why do the companies featured in the video face challenges when entering the IPO underwriting business?",
+      "options": [
+        "A. The firm lacked the necessary capital to compete with established players.",
+        "B. The commercial paper market was saturated and offered limited growth opportunities.",
+        "C. Regulations at the time heavily restricted new entrants in the IPO market.",
+        "D. The firm's special background positioned it as an outsider in the elite-dominated industry."
+      ],
+      "answer": "D",
+      "task_type": "Information Synopsis",
+      "sub_category": "Finance & Commerce",
+      "domain": "Knowledge",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "637-3",
+      "video_id": "637",
+      "question": "How did the collapse of Long Term Capital Management (LTCM) affect Goldman Sachs in the video?",
+      "options": [
+        "A. Led to the immediate downfall of Goldman Sachs due to its large exposure to LTCM.",
+        "B. Resulted in the government bailout of Goldman Sachs and other major Wall Street firms.",
+        "C. Forced Goldman Sachs to adapt its business model and seek a more stable base of capital.",
+        "D. Prompted Goldman Sachs to shift its focus from trading to traditional investment banking activities."
+      ],
+      "answer": "C",
+      "task_type": "Object Reasoning",
+      "sub_category": "Finance & Commerce",
+      "domain": "Knowledge",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "704-1",
+      "video_id": "704",
+      "question": "Before Jane spills the nail polish, why does Grayson, who is wearing a black suit and a red tie, sit on the couch with a grim expression?",
+      "options": [
+        "A. Because Grayson discovered that a stranger had broken into the house.",
+        "B. Because Grayson was facing trouble at work.",
+        "C. Because Grayson couldn't accept the fact that his girlfriend Deb had gained weight.",
+        "D. Because Grayson's girlfriend Deb died in a car accident."
+      ],
+      "answer": "D",
+      "task_type": "Action Reasoning",
+      "sub_category": "Movie & TV Show",
+      "domain": "Film & Television",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "704-2",
+      "video_id": "704",
+      "question": "When Jane saw Grayson in the office, she shed tears. What was Jane's mood at this moment?",
+      "options": [
+        "A. Crying with joy.",
+        "B. Touched.",
+        "C. Regretful.",
+        "D. Sad."
+      ],
+      "answer": "D",
+      "task_type": "Attribute Perception",
+      "sub_category": "Movie & TV Show",
+      "domain": "Film & Television",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "704-3",
+      "video_id": "704",
+      "question": "Throughout the video, why does the woman named Jane undergo a personality change?",
+      "options": [
+        "A. Because Jane's body contains the consciousness of the deceased Deb.",
+        "B. Because difficulties at work prompt Jane to change herself.",
+        "C. Because Jane wants to make herself more likable to clients.",
+        "D. Because Jane misses Deb and wants to pay tribute to Deb."
+      ],
+      "answer": "A",
+      "task_type": "Action Reasoning",
+      "sub_category": "Movie & TV Show",
+      "domain": "Film & Television",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "766-1",
+      "video_id": "766",
+      "question": "Which player is lying on the ground receiving treatment in the first half of the video?",
+      "options": [
+        "A. 283 Jonathan Drack.",
+        "B. 295 Tosin OKE.",
+        "C. 150 Bing Dong.",
+        "D. 377 Omar Craddock."
+      ],
+      "answer": "D",
+      "task_type": "Object Recognition",
+      "sub_category": "Athletics",
+      "domain": "Sports Competition",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "766-2",
+      "video_id": "766",
+      "question": "What is the problem with Tosin OKE's presence in the game in the video?",
+      "options": [
+        "A. He performed an illegal dance routine during the landing phase, violating the rules.",
+        "B. He veered to one side of the track during the jump phase and always stepped on the sideline.",
+        "C. He constantly high-fived the spectators during the jump phase, causing a delay in the event.",
+        "D. None of the above."
+      ],
+      "answer": "B",
+      "task_type": "Action Reasoning",
+      "sub_category": "Athletics",
+      "domain": "Sports Competition",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "766-3",
+      "video_id": "766",
+      "question": "Which player in the video is always in the lead?",
+      "options": [
+        "A. 283 Benjamin Compaore.",
+        "B. 222 Max Hess.",
+        "C. 150 Bing Dong.",
+        "D. 377 Omar Craddock."
+      ],
+      "answer": "C",
+      "task_type": "Object Reasoning",
+      "sub_category": "Athletics",
+      "domain": "Sports Competition",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "839-1",
+      "video_id": "839",
+      "question": "How many calories has the person in the video, who consumed a $100 golden burger, already eaten when he meets his teammate?",
+      "options": [
+        "A. 4660.",
+        "B. 5050.",
+        "C. 6070.",
+        "D. 8420."
+      ],
+      "answer": "C",
+      "task_type": "OCR Problems",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "839-2",
+      "video_id": "839",
+      "question": "What is the relationship between the person documenting his fitness at the beginning of the video and the main curator of this video?",
+      "options": [
+        "A. They're teammates.",
+        "B. They're competitors.",
+        "C. They do not know each other.",
+        "D. Can't extrapolate from the video."
+      ],
+      "answer": "B",
+      "task_type": "Object Reasoning",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "839-3",
+      "video_id": "839",
+      "question": "Who in the video accomplished the calorie goal set?",
+      "options": [
+        "A. All have accomplished their goals.",
+        "B. No one has accomplished the goal.",
+        "C. Members of Team UK.",
+        "D. Members of Team USA."
+      ],
+      "answer": "B",
+      "task_type": "Action Reasoning",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "043-1",
+      "video_id": "043",
+      "question": "Why does the roof object fly?",
+      "options": [
+        "A. There was an explosion.",
+        "B. Thrown into the air by a child.",
+        "C. Tied to a balloon.",
+        "D. Lunar approach."
+      ],
+      "answer": "D",
+      "task_type": "Spatial Reasoning",
+      "sub_category": "Astronomy",
+      "domain": "Knowledge",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "043-2",
+      "video_id": "043",
+      "question": "How many people are watching TV in the video?",
+      "options": [
+        "A. 1.",
+        "B. 3.",
+        "C. 2.",
+        "D. 4."
+      ],
+      "answer": "C",
+      "task_type": "Counting Problem",
+      "sub_category": "Astronomy",
+      "domain": "Knowledge",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "043-3",
+      "video_id": "043",
+      "question": "Which type of disaster is portrayed in the video?",
+      "options": [
+        "A. Man-made disaster.",
+        "B. Astronomical disaster.",
+        "C. Meteorological disaster.",
+        "D. Geological disaster."
+      ],
+      "answer": "B",
+      "task_type": "Spatial Reasoning",
+      "sub_category": "Astronomy",
+      "domain": "Knowledge",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "110-1",
+      "video_id": "110",
+      "question": "What activities do students engage in within the room?",
+      "options": [
+        "A. Reading books.",
+        "B. Practicing spell.",
+        "C. Fighting with rods.",
+        "D. Making explosion."
+      ],
+      "answer": "B",
+      "task_type": "Action Recognition",
+      "sub_category": "Movie & TV Show",
+      "domain": "Film & Television",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "110-2",
+      "video_id": "110",
+      "question": "Which of the following outcomes occurs when the boy with brown hair and no glasses indicates the feather?",
+      "options": [
+        "A. The boy floats up.",
+        "B. The boy explodes.",
+        "C. The feather explodes.",
+        "D. The feather floats up."
+      ],
+      "answer": "C",
+      "task_type": "Action Recognition",
+      "sub_category": "Movie & TV Show",
+      "domain": "Film & Television",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "110-3",
+      "video_id": "110",
+      "question": "What is the attitude of the teacher towards the girl's appearance?",
+      "options": [
+        "A. Angry.",
+        "B. Positive.",
+        "C. Disappointed.",
+        "D. Peaceful."
+      ],
+      "answer": "B",
+      "task_type": "Action Reasoning",
+      "sub_category": "Movie & TV Show",
+      "domain": "Film & Television",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "234-1",
+      "video_id": "234",
+      "question": "What color is the spoon used for mixing in the video?",
+      "options": [
+        "A. Yellow.",
+        "B. Pink.",
+        "C. Red.",
+        "D. Orange."
+      ],
+      "answer": "B",
+      "task_type": "Attribute Perception",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "234-2",
+      "video_id": "234",
+      "question": "Why does the food in the video swell?",
+      "options": [
+        "A. Fermentation.",
+        "B. Steep.",
+        "C. Baking in the oven.",
+        "D. Aeration."
+      ],
+      "answer": "C",
+      "task_type": "Object Reasoning",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "234-3",
+      "video_id": "234",
+      "question": "What kind of food is being prepared in the video?",
+      "options": [
+        "A. Pizza.",
+        "B. Cheese block.",
+        "C. Bread.",
+        "D. Scone."
+      ],
+      "answer": "D",
+      "task_type": "Object Recognition",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "239-1",
+      "video_id": "239",
+      "question": "Which of the following cooking methods causes the smoke seen in the video?",
+      "options": [
+        "A. Making soup.",
+        "B. BBQ.",
+        "C. Stir fry.",
+        "D. Fire hazard."
+      ],
+      "answer": "B",
+      "task_type": "Object Reasoning",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "239-2",
+      "video_id": "239",
+      "question": "Which dish is served last in the video?",
+      "options": [
+        "A. 4.",
+        "B. 2.",
+        "C. 3.",
+        "D. 1."
+      ],
+      "answer": "C",
+      "task_type": "Counting Problem",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "239-3",
+      "video_id": "239",
+      "question": "What is the color of the laughing grandmother's attire in the video?",
+      "options": [
+        "A. Light brown.",
+        "B. Light blue.",
+        "C. Light yellow.",
+        "D. Light green."
+      ],
+      "answer": "D",
+      "task_type": "Attribute Perception",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "251-1",
+      "video_id": "251",
+      "question": "Which daily activity is not shown in the video?",
+      "options": [
+        "A. Cleaning the floor.",
+        "B. Eating a meal.",
+        "C. Ironing clothes.",
+        "D. Cooking."
+      ],
+      "answer": "B",
+      "task_type": "Action Recognition",
+      "sub_category": "Daily Life",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "251-2",
+      "video_id": "251",
+      "question": "What is the woman sitting on the floor ready to do at the end of the video?",
+      "options": [
+        "A. To play cell phone.",
+        "B. To play games.",
+        "C. To watch TV.",
+        "D. To read a book."
+      ],
+      "answer": "C",
+      "task_type": "Action Recognition",
+      "sub_category": "Daily Life",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "251-3",
+      "video_id": "251",
+      "question": "After cleaning her floor in the video, what did the woman do next?",
+      "options": [
+        "A. Frying an egg.",
+        "B. Using a cup to catch water.",
+        "C. Washing her clothes.",
+        "D. Cutting a watermelon."
+      ],
+      "answer": "A",
+      "task_type": "Temporal Perception",
+      "sub_category": "Daily Life",
+      "domain": "Life Record",
+      "duration_bucket": "short"
+    },
+    {
+      "question_id": "499-1",
+      "video_id": "499",
+      "question": "According to this video, in which order do the following events happen?\n(a) The flower in the mouth turns into a butterfly.\n(b) The turban turns into a real snake.\n(c) The spider painting on the arm turns into a real spider.",
+      "options": [
+        "A. (a)(b)(c).",
+        "B. (b)(a)(c).",
+        "C. (b)(c)(a).",
+        "D. (c)(b)(a)."
+      ],
+      "answer": "B",
+      "task_type": "Temporal Reasoning",
+      "sub_category": "Magic Show",
+      "domain": "Artistic Performance",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "499-2",
+      "video_id": "499",
+      "question": "Where are most of the magics in this video performed?",
+      "options": [
+        "A. On the stage.",
+        "B. Beside the swimming pool.",
+        "C. Inner room such as cafe or bar.",
+        "D. At home."
+      ],
+      "answer": "C",
+      "task_type": "Spatial Perception",
+      "sub_category": "Magic Show",
+      "domain": "Artistic Performance",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "499-3",
+      "video_id": "499",
+      "question": "How many magics does the magician play?",
+      "options": [
+        "A. 7.",
+        "B. 6.",
+        "C. 8.",
+        "D. 9."
+      ],
+      "answer": "A",
+      "task_type": "Counting Problem",
+      "sub_category": "Magic Show",
+      "domain": "Artistic Performance",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "545-1",
+      "video_id": "545",
+      "question": "What is the correct sequence of different products appearing in the video?",
+      "options": [
+        "A. Scrunch socks, Earrings, Dress pants.",
+        "B. Scrunch socks, Dress pants, Earrings.",
+        "C. Dress pants, Scrunch socks, Earrings.",
+        "D. Earrings, Scrunch socks, Dress pants."
+      ],
+      "answer": "C",
+      "task_type": "Temporal Reasoning",
+      "sub_category": "Fashion",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "545-2",
+      "video_id": "545",
+      "question": "What does the woman in the video recommend wearing while running?",
+      "options": [
+        "A. Waist Length Tank Tops.",
+        "B. Satina Leggings.",
+        "C. Lounge Set.",
+        "D. Faux Leather Jacket."
+      ],
+      "answer": "B",
+      "task_type": "Object Recognition",
+      "sub_category": "Fashion",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "545-3",
+      "video_id": "545",
+      "question": "When the woman in the video introduces Scrunch socks, which two other pieces of clothing she recommends are mixed in the little video she's talking about?",
+      "options": [
+        "A. 3 and 6.",
+        "B. 10 and 5.",
+        "C. 9 and 12.",
+        "D. 11 and 1."
+      ],
+      "answer": "A",
+      "task_type": "Object Recognition",
+      "sub_category": "Fashion",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "559-1",
+      "video_id": "559",
+      "question": "What are the two time periods in the video when the male protagonist is training for swimming?",
+      "options": [
+        "A. 7:00AM-9:00AM and 3:00PM-5:00PM.",
+        "B. 7:00PM-9:00PM and 3:00AM-5:00AM.",
+        "C. 7:30AM-9:30AM and 3:30PM-5:30PM.",
+        "D. 6:00AM-9:00AM and 3:00PM-5:00PM."
+      ],
+      "answer": "A",
+      "task_type": "Temporal Perception",
+      "sub_category": "Daily Life",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "559-2",
+      "video_id": "559",
+      "question": "Which of the following options is the correct ordering of events for the male lead?",
+      "options": [
+        "A. Swimming training,gym training,lunch.",
+        "B. Breakfast,swimming training,gym training.",
+        "C. Breakfast,swimming training,lunch.",
+        "D. Swimming training, breakfast, gym training."
+      ],
+      "answer": "D",
+      "task_type": "Temporal Reasoning",
+      "sub_category": "Daily Life",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "559-3",
+      "video_id": "559",
+      "question": "What did the man in the video do next after finishing his second swim session?",
+      "options": [
+        "A. Having a rest at room.",
+        "B. Eating dinner.",
+        "C. Recoverying.",
+        "D. Doing some work at room."
+      ],
+      "answer": "B",
+      "task_type": "Action Recognition",
+      "sub_category": "Daily Life",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "569-1",
+      "video_id": "569",
+      "question": "When does the construction of the highway start, as described by the man in his first viewpoint at the beginning of the video?",
+      "options": [
+        "A. 1919.",
+        "B. 1922.",
+        "C. 1999.",
+        "D. 1990."
+      ],
+      "answer": "A",
+      "task_type": "Attribute Perception",
+      "sub_category": "Travel",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "569-2",
+      "video_id": "569",
+      "question": "Extrapolating from the video, what is most likely carved on the stone next to the highway?",
+      "options": [
+        "A. Telephone number.",
+        "B. Prisoner's id number.",
+        "C. Highway number.",
+        "D. Decorative pattern."
+      ],
+      "answer": "B",
+      "task_type": "Object Reasoning",
+      "sub_category": "Travel",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "569-3",
+      "video_id": "569",
+      "question": "Where does the main character arrive at the end of the video?",
+      "options": [
+        "A. A mine.",
+        "B. Queen creek bridge.",
+        "C. Claypool Tunnel.",
+        "D. Town of Superior."
+      ],
+      "answer": "D",
+      "task_type": "Temporal Perception",
+      "sub_category": "Travel",
+      "domain": "Life Record",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "599-1",
+      "video_id": "599",
+      "question": "What time did the heroine in the video turn off her alarm clock?",
+      "options": [
+        "A. 8:24.",
+        "B. 9:24.",
+        "C. 6:24.",
+        "D. Not mentioned in the video."
+      ],
+      "answer": "B",
+      "task_type": "OCR Problems",
+      "sub_category": "Multilingual",
+      "domain": "Multilingual",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "599-2",
+      "video_id": "599",
+      "question": "Which of the following options correctly sorts the events of the following heroines in chronological order?\n\u2460 Study\n\u2461 Make the bed\n\u2462 Eat breakfast\n\u2463 Exercise at home",
+      "options": [
+        "A. \u2461\u2460\u2462\u2463.",
+        "B. \u2461\u2463\u2462\u2460.",
+        "C. \u2461\u2462\u2460\u2463.",
+        "D. \u2462\u2461\u2460\u2463."
+      ],
+      "answer": "C",
+      "task_type": "Temporal Reasoning",
+      "sub_category": "Multilingual",
+      "domain": "Multilingual",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "599-3",
+      "video_id": "599",
+      "question": "How much money can you save by purchasing the course through the link and promo code shared by the heroine in the video?",
+      "options": [
+        "A. 11550 rubles.",
+        "B. 16500 rubles.",
+        "C. 4950 rubles.",
+        "D. 21,450 rubles."
+      ],
+      "answer": "A",
+      "task_type": "OCR Problems",
+      "sub_category": "Multilingual",
+      "domain": "Multilingual",
+      "duration_bucket": "medium"
+    },
+    {
+      "question_id": "687-1",
+      "video_id": "687",
+      "question": "Which car was the first to be designed with an automobile roof?",
+      "options": [
+        "A. Type 44.",
+        "B. Type 46.",
+        "C. Type 41.",
+        "D. Type 55."
+      ],
+      "answer": "A",
+      "task_type": "Attribute Perception",
+      "sub_category": "Technology",
+      "domain": "Knowledge",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "687-2",
+      "video_id": "687",
+      "question": "What type of Bugatti does the video devote the most space to?",
+      "options": [
+        "A. Bugatti Veyron.",
+        "B. Bugatti Chiron.",
+        "C. Type 57.",
+        "D. Bugatti EB."
+      ],
+      "answer": "B",
+      "task_type": "Temporal Perception",
+      "sub_category": "Technology",
+      "domain": "Knowledge",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "687-3",
+      "video_id": "687",
+      "question": "According to the video, how many cars have broken 300 mph top speed?",
+      "options": [
+        "A. 0.",
+        "B. 2.",
+        "C. 3.",
+        "D. 1."
+      ],
+      "answer": "D",
+      "task_type": "Counting Problem",
+      "sub_category": "Technology",
+      "domain": "Knowledge",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "739-1",
+      "video_id": "739",
+      "question": "Why does the player send a message of well met?",
+      "options": [
+        "A. He is very courteous.",
+        "B. Opponent drags a powerful card of him onto the chessboard.",
+        "C. He doesn't want this outcome.",
+        "D. He sends the wrong message."
+      ],
+      "answer": "B",
+      "task_type": "Action Reasoning",
+      "sub_category": "Esports",
+      "domain": "Sports Competition",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "739-2",
+      "video_id": "739",
+      "question": "What is the occupation of the character the player controls?",
+      "options": [
+        "A. Thief.",
+        "B. Paladin.",
+        "C. Priest.",
+        "D. Warrior."
+      ],
+      "answer": "B",
+      "task_type": "Object Recognition",
+      "sub_category": "Esports",
+      "domain": "Sports Competition",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "739-3",
+      "video_id": "739",
+      "question": "Which cost of card has the fewest number?",
+      "options": [
+        "A. 2.",
+        "B. 3.",
+        "C. 5.",
+        "D. 6."
+      ],
+      "answer": "D",
+      "task_type": "Object Recognition",
+      "sub_category": "Esports",
+      "domain": "Sports Competition",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "825-1",
+      "video_id": "825",
+      "question": "According to this video, which handmade electronic device is the most commonly manufactured among the following options?",
+      "options": [
+        "A. iPad.",
+        "B. Smartphone.",
+        "C. Personal laptop.",
+        "D. Game console."
+      ],
+      "answer": "B",
+      "task_type": "Object Reasoning",
+      "sub_category": "Handicraft",
+      "domain": "Life Record",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "825-2",
+      "video_id": "825",
+      "question": "In which order are the following steps introduced in this video?\n(a) Cardboard Apple MacBook.\n(b) Cardboard Apple Watch.\n(c) Apple iPad.\n(d) Apple iPhone 13.",
+      "options": [
+        "A. (b)(c)(a)(d).",
+        "B. (a)(b)(c)(d).",
+        "C. (a)(c)(b)(d).",
+        "D. (b)(d)(a)(c)."
+      ],
+      "answer": "C",
+      "task_type": "Temporal Reasoning",
+      "sub_category": "Handicraft",
+      "domain": "Life Record",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "825-3",
+      "video_id": "825",
+      "question": "What is the main topic of this video?",
+      "options": [
+        "A. Handmade working cardboard gadgets for the year.",
+        "B. Advertisements for new gadgets released during the year.",
+        "C. A quality review of the year's best-selling electronic products.",
+        "D. Showcase of must-buy tech products for the year."
+      ],
+      "answer": "A",
+      "task_type": "Information Synopsis",
+      "sub_category": "Handicraft",
+      "domain": "Life Record",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "838-1",
+      "video_id": "838",
+      "question": "Extrapolating from the video, what does it suggest if chunky fries are served?",
+      "options": [
+        "A. The fries are processed in foreign factories.",
+        "B. The fries are hand-cut strips.",
+        "C. The fries absorb enough grease.",
+        "D. Square fries imply a lack of processing."
+      ],
+      "answer": "B",
+      "task_type": "Object Reasoning",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "838-2",
+      "video_id": "838",
+      "question": "What is the correct order for processing cod in the video?",
+      "options": [
+        "A. Cubed, inspected, cut into strips, breaded and fried.",
+        "B. Inspected, cubed, cut into strips, breaded and fried.",
+        "C. Cubed, breaded, cut into strips, fried and frozen.",
+        "D. Inspected, cut into strips, breaded, fried and cubed."
+      ],
+      "answer": "A",
+      "task_type": "Temporal Reasoning",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "838-3",
+      "video_id": "838",
+      "question": "Which aspect does this video emphasize?",
+      "options": [
+        "A. Difference in processing procedures between meat products and plant-based products.",
+        "B. Documentary about several foods from raw materials to processing into processed foods.",
+        "C. Emphasize the important role that machines play in food processing.",
+        "D. The development of food processing lines."
+      ],
+      "answer": "B",
+      "task_type": "Information Synopsis",
+      "sub_category": "Food",
+      "domain": "Life Record",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "899-1",
+      "video_id": "899",
+      "question": "Based on the video, why did Miranda mention many things related to Sicily?",
+      "options": [
+        "A. Because Sicily is Miranda's father's hometown.",
+        "B. Because Sicily is Miranda's birthplace.",
+        "C. Because Sicily is Miranda's mother's hometown.",
+        "D. Because Miranda likes the sea of Sicily."
+      ],
+      "answer": "B",
+      "task_type": "Action Reasoning",
+      "sub_category": "Multilingual",
+      "domain": "Multilingual",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "899-2",
+      "video_id": "899",
+      "question": "Which of the following is not exemplified by Miranda's experience of learning new languages in Seville?",
+      "options": [
+        "A. The process of learning a language requires judging others.",
+        "B. The process of learning a language should not be afraid of making mistakes.",
+        "C. The process of learning a language should not feel ashamed.",
+        "D. The process of learning a language requires daring to speak."
+      ],
+      "answer": "A",
+      "task_type": "Action Recognition",
+      "sub_category": "Multilingual",
+      "domain": "Multilingual",
+      "duration_bucket": "long"
+    },
+    {
+      "question_id": "899-3",
+      "video_id": "899",
+      "question": "How many questions did the man in the pink shirt ask Miranda in the video?",
+      "options": [
+        "A. 8.",
+        "B. 9.",
+        "C. 7.",
+        "D. 6."
+      ],
+      "answer": "A",
+      "task_type": "Counting Problem",
+      "sub_category": "Multilingual",
+      "domain": "Multilingual",
+      "duration_bucket": "long"
+    }
+  ]
+}

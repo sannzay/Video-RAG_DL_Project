@@ -1,0 +1,182 @@
+{
+  "FlcVBKTSjRs": {
+    "lens": "crafting objects and tools used in the project and visible results",
+    "n_questions": 3,
+    "sub_category": "Handicraft",
+    "duration_bucket": "short"
+  },
+  "NjxJY7P-Qpo": {
+    "lens": "identifying people their actions and audience reactions",
+    "n_questions": 3,
+    "sub_category": "Stage Play",
+    "duration_bucket": "short"
+  },
+  "_KU4X06VNiE": {
+    "lens": "identifying people their actions jerseys and on-screen branding and numbers",
+    "n_questions": 3,
+    "sub_category": "Football",
+    "duration_bucket": "short"
+  },
+  "Atf_Af1q_5w": {
+    "lens": "identifying people and scenery in various outdoor settings",
+    "n_questions": 3,
+    "sub_category": "Travel",
+    "duration_bucket": "short"
+  },
+  "NXeHeEHj9Xc": {
+    "lens": "people eating habits and snack preferences and visible food items",
+    "n_questions": 3,
+    "sub_category": "Food",
+    "duration_bucket": "short"
+  },
+  "phM_SYH6aA0": {
+    "lens": "identifying people and their gymnastic actions and on-screen device displays",
+    "n_questions": 3,
+    "sub_category": "Life Tip",
+    "duration_bucket": "medium"
+  },
+  "k7iaAhz2md0": {
+    "lens": "physical objects and materials visible in the scene",
+    "n_questions": 3,
+    "sub_category": "Handicraft",
+    "duration_bucket": "medium"
+  },
+  "zW87tVnDKIU": {
+    "lens": "identifying athletes their actions and visible scoring information and numbers",
+    "n_questions": 3,
+    "sub_category": "Athletics",
+    "duration_bucket": "medium"
+  },
+  "xr_nln2ZQw8": {
+    "lens": "social issues economic factors and visible interview dialogue and attitudes",
+    "n_questions": 3,
+    "sub_category": "Documentary",
+    "duration_bucket": "medium"
+  },
+  "UGMDV82m3Ro": {
+    "lens": "key objects and events identifying people and their reactions",
+    "n_questions": 3,
+    "sub_category": "Variety Show",
+    "duration_bucket": "medium"
+  },
+  "HTv4z899xgA": {
+    "lens": "identifying people their actions and emotional cues and expressions",
+    "n_questions": 3,
+    "sub_category": "Movie & TV Show",
+    "duration_bucket": "long"
+  },
+  "J5Npf2xJpag": {
+    "lens": "companies and their financial challenges and outcomes",
+    "n_questions": 3,
+    "sub_category": "Finance & Commerce",
+    "duration_bucket": "long"
+  },
+  "azJ5pk5reX0": {
+    "lens": "identifying people their actions and calorie counts on-screen",
+    "n_questions": 3,
+    "sub_category": "Food",
+    "duration_bucket": "long"
+  },
+  "HProiNnmGwI": {
+    "lens": "historical events and on-screen date or place labels",
+    "n_questions": 3,
+    "sub_category": "Humanity & History",
+    "duration_bucket": "long"
+  },
+  "SB4NLADmT_k": {
+    "lens": "identifying players their actions and on-screen jersey numbers",
+    "n_questions": 3,
+    "sub_category": "Athletics",
+    "duration_bucket": "long"
+  },
+  "9jjTGpWmc5U": {
+    "lens": "identifying people and objects in disaster scenes and on-screen actions",
+    "n_questions": 3,
+    "sub_category": "Astronomy",
+    "duration_bucket": "short"
+  },
+  "v0m3E_uSyFg": {
+    "lens": "cooking ingredients and utensils with visible colors and food textures",
+    "n_questions": 3,
+    "sub_category": "Food",
+    "duration_bucket": "short"
+  },
+  "Qgr4dcsY-60": {
+    "lens": "identifying people their actions and interpersonal dynamics in the room",
+    "n_questions": 3,
+    "sub_category": "Movie & TV Show",
+    "duration_bucket": "short"
+  },
+  "1sTQOxXFO44": {
+    "lens": "identifying people and their daily activities and actions",
+    "n_questions": 3,
+    "sub_category": "Daily Life",
+    "duration_bucket": "short"
+  },
+  "VnvG08masio": {
+    "lens": "cooking methods dishes served and people's clothing colors and actions",
+    "n_questions": 3,
+    "sub_category": "Food",
+    "duration_bucket": "short"
+  },
+  "umfD-K4OTKk": {
+    "lens": "identifying magical events and their sequence and locations",
+    "n_questions": 3,
+    "sub_category": "Magic Show",
+    "duration_bucket": "medium"
+  },
+  "0JjgoicpYkU": {
+    "lens": "identifying heroine actions timing and on-screen text and numbers",
+    "n_questions": 3,
+    "sub_category": "Multilingual",
+    "duration_bucket": "medium"
+  },
+  "VMJEY6uCX3k": {
+    "lens": "identifying locations and on-screen text and key events in sequence",
+    "n_questions": 3,
+    "sub_category": "Travel",
+    "duration_bucket": "medium"
+  },
+  "wUnEDnAYTpE": {
+    "lens": "identifying people their actions and sequence of events over time",
+    "n_questions": 3,
+    "sub_category": "Daily Life",
+    "duration_bucket": "medium"
+  },
+  "ntdzrNKRH4g": {
+    "lens": "identifying products and clothing items and their sequence and recommendations",
+    "n_questions": 3,
+    "sub_category": "Fashion",
+    "duration_bucket": "medium"
+  },
+  "yGiM3kD12cU": {
+    "lens": "car models design features and on-screen automotive statistics and branding",
+    "n_questions": 3,
+    "sub_category": "Technology",
+    "duration_bucket": "long"
+  },
+  "f-1xE_5uXDg": {
+    "lens": "identifying people their actions and dialogue in specific locations",
+    "n_questions": 3,
+    "sub_category": "Multilingual",
+    "duration_bucket": "long"
+  },
+  "wxff_4tDauo": {
+    "lens": "handmade electronic devices and their manufacturing sequence on-screen",
+    "n_questions": 3,
+    "sub_category": "Handicraft",
+    "duration_bucket": "long"
+  },
+  "txdfCHpxzVg": {
+    "lens": "food preparation steps and processing sequence emphasis",
+    "n_questions": 3,
+    "sub_category": "Food",
+    "duration_bucket": "long"
+  },
+  "QdHBJ-NiaHM": {
+    "lens": "in-game text and character actions and card attributes",
+    "n_questions": 3,
+    "sub_category": "Esports",
+    "duration_bucket": "long"
+  }
+}

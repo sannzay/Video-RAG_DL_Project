@@ -413,11 +413,33 @@ class VideoIndexer:
 
                 # OpenRouter-backed vision with the domain context baked into the
                 # prompt literal. Same async path as the description index.
+                #
+                # The prompt is deliberately structured so the domain caption is
+                # a *superset* of the description caption, not a narrower
+                # lens-only replacement. Previous versions said "focus on
+                # elements relevant to {context}" and the captioner dropped
+                # on-screen text, numbers, and incidental objects not named
+                # by the lens. That regressed OCR-style questions. The shape
+                # below guarantees the caption always mentions:
+                #   (a) lens-relevant content,
+                #   (b) visible text / numbers / labels verbatim,
+                #   (c) people and objects with counts and rough positions.
                 domain_prompt = (
-                    f"Analyze this image in the context of: {domain_context}\n\n"
-                    f"Describe what you see with specific focus on elements relevant to "
-                    f"{domain_context}. Be detailed about objects, actions, and visual "
-                    f"elements that would be important in this domain context."
+                    f"Caption this video frame in 3-4 sentences.\n\n"
+                    f"Your caption MUST cover, in order:\n"
+                    f"  (1) Aspects relevant to the analytical lens: "
+                    f"\"{domain_context}\". Describe the actions, interactions, "
+                    f"or conditions the lens highlights, with enough detail to "
+                    f"answer a question under that lens.\n"
+                    f"  (2) Any visible on-screen text, numbers, dates, scores, "
+                    f"names, logos, labels, signs, or branding - reproduced "
+                    f"verbatim inside quotes.\n"
+                    f"  (3) The scene: who is present (count, clothing color), "
+                    f"what objects are visible, and where they are in the frame "
+                    f"(left / right / center / foreground / background).\n\n"
+                    f"Do not speculate beyond what is visible in this single "
+                    f"frame. If an item in (2) or (3) is not present, skip it "
+                    f"rather than inventing content."
                 )
                 logger.info(f"Adding domain_caption column via OpenRouter model: {settings.IMAGE_CAPTION_MODEL}")
                 domain_view.add_computed_column(

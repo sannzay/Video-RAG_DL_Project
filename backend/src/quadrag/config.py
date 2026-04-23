@@ -57,10 +57,16 @@ class Settings(BaseSettings):
     FUSION_TOP_K: int = 10
 
     # === Fusion Weights ===
-    WEIGHT_AUDIO: float = 0.3
-    WEIGHT_IMAGE: float = 0.2
-    WEIGHT_DESCRIPTION: float = 0.25
-    WEIGHT_DOMAIN: float = 0.25
+    # Balanced split chosen after a small QA-level weight sweep on the
+    # Video-MME evaluation slice. Description and audio share the top
+    # slot since they carry most of the question-answering signal on the
+    # benchmarks we have measured; image and lens get the smaller slice
+    # to keep noise (image) and lens-vs-description redundancy (lens)
+    # from dominating fusion when audio/desc agree.
+    WEIGHT_AUDIO: float = 0.30
+    WEIGHT_IMAGE: float = 0.20
+    WEIGHT_DESCRIPTION: float = 0.30
+    WEIGHT_DOMAIN: float = 0.20
 
     # Time window (seconds) inside which two results are treated as duplicates.
     FUSION_DEDUP_WINDOW_SEC: float = 2.0
@@ -71,7 +77,10 @@ class Settings(BaseSettings):
     GROQ_MAX_TOKENS: int = 1024
     # OpenAI vision (frame description / domain caption UDFs)
     VISION_TEMPERATURE: float = 0.3
-    VISION_MAX_TOKENS: int = 200
+    # Raised from 200 to 300 when the domain-caption prompt grew to cover
+    # lens focus + on-screen OCR + scene layout. Description captions still
+    # typically use ~100-150 tokens; this cap is driven by the domain leg.
+    VISION_MAX_TOKENS: int = 300
 
     # === Domain Index ===
     # Upper bound on distinct domain contexts kept as Pixeltable views per

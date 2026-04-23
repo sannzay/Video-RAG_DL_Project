@@ -91,3 +91,14 @@ RAILWAY_SETUP.md
 RAILWAY_SETUP.md
 RAILWAY_SETUP.md
 frontend/quadrag_testing/README.md
+
+# Claude/agent helper files (not part of the product)
+CLAUDE.md
+.claude/
+
+# Evaluation scratch: keep the scripts + README + slice + lenses,
+# drop logs / raw results / intermediate backups.
+tests/evaluation/results/
+tests/evaluation/__pycache__/
+tests/evaluation/data/slice_15.json
+tests/evaluation/data/question_lenses_v1.json
